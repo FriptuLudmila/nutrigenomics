@@ -19,6 +19,9 @@ Endpoints:
     GET  /api/snps                      - List analyzed SNPs
 """
 
+from dotenv import load_dotenv
+load_dotenv()  # Load environment variables from .env file
+
 from app import create_app
 
 # Create the application

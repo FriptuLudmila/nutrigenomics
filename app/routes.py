@@ -1,10 +1,3 @@
-"""
-API Routes with MongoDB
-=======================
-All REST API endpoints for the Nutrigenomics application.
-Now with database persistence and encryption.
-"""
-
 import os
 from datetime import datetime
 from flask import Blueprint, request, jsonify, current_app
@@ -22,12 +15,10 @@ from .models import (
 )
 from .encryption import encrypt_genetic_findings, decrypt_genetic_findings
 
-# Create Blueprint
 api_bp = Blueprint('api', __name__)
 
 
 def allowed_file(filename):
-    """Check if file extension is allowed"""
     allowed_ext = current_app.config.get('ALLOWED_EXTENSIONS', {'txt', 'csv', 'zip'})
     return '.' in filename and filename.rsplit('.', 1)[1].lower() in allowed_ext
 
@@ -37,17 +28,15 @@ def allowed_file(filename):
 # ============================================
 @api_bp.route('/upload', methods=['POST'])
 def upload_file():
-    """Upload a genetic data file (23andMe, AncestryDNA, etc.)"""
     if 'file' not in request.files:
-        return jsonify({'error': 'No file provided', 'message': 'Please include a file using the "file" field'}), 400
+        return jsonify({'error': 'No file provided'}), 400
     
     file = request.files['file']
-    
     if file.filename == '':
-        return jsonify({'error': 'No file selected', 'message': 'Please select a file to upload'}), 400
+        return jsonify({'error': 'No file selected'}), 400
     
     if not allowed_file(file.filename):
-        return jsonify({'error': 'Invalid file type', 'message': 'Allowed: .txt, .csv, .zip'}), 400
+        return jsonify({'error': 'Invalid file type', 'allowed': '.txt, .csv, .zip'}), 400
     
     try:
         filename = secure_filename(file.filename)
@@ -61,14 +50,14 @@ def upload_file():
         
         db = get_db()
         if not save_session(db, session):
-            return jsonify({'error': 'Database error', 'message': 'Failed to save session'}), 500
+            return jsonify({'error': 'Database error'}), 500
         
         return jsonify({
             'success': True,
             'session_id': session.session_id,
             'message': 'File uploaded successfully',
             'file_info': {'original_name': filename, 'size_bytes': session.file_size_bytes},
-            'next_step': 'Call POST /api/analyze with your session_id'
+            'next_step': 'POST /api/analyze with session_id'
         }), 201
         
     except Exception as e:
@@ -80,9 +69,7 @@ def upload_file():
 # ============================================
 @api_bp.route('/analyze', methods=['POST'])
 def analyze_genetic_data():
-    """Analyze uploaded genetic data for nutrigenomics variants."""
     data = request.get_json()
-    
     if not data or 'session_id' not in data:
         return jsonify({'error': 'Missing session_id'}), 400
     
@@ -91,9 +78,8 @@ def analyze_genetic_data():
     
     session = get_session(db, session_id)
     if not session:
-        return jsonify({'error': 'Invalid session_id', 'message': 'Session not found'}), 404
+        return jsonify({'error': 'Invalid session_id'}), 404
     
-    # Check if already analyzed
     existing_results = get_genetic_results(db, session_id)
     if existing_results:
         decrypted_findings = decrypt_genetic_findings(existing_results.findings_encrypted)
@@ -117,10 +103,10 @@ def analyze_genetic_data():
             'nutrigenomics_snps_analyzed': len(findings),
             'high_risk': len([f for f in findings if f['risk_level'] == 'high']),
             'moderate_risk': len([f for f in findings if f['risk_level'] == 'moderate']),
-            'low_risk': len([f for f in findings if f['risk_level'] == 'low'])
+            'low_risk': len([f for f in findings if f['risk_level'] == 'low']),
+            'protective': len([f for f in findings if f['risk_level'] == 'protective'])
         }
         
-        # Encrypt findings before storing
         encrypted_findings = encrypt_genetic_findings(findings)
         
         genetic_results = GeneticResults.create(
@@ -141,7 +127,7 @@ def analyze_genetic_data():
             'success': True,
             'session_id': session_id,
             'results': {'file_info': results['file_info'], 'findings': findings, 'summary': summary},
-            'next_step': 'Call POST /api/questionnaire to add lifestyle factors'
+            'next_step': 'POST /api/questionnaire'
         }), 200
         
     except Exception as e:
@@ -153,9 +139,7 @@ def analyze_genetic_data():
 # ============================================
 @api_bp.route('/questionnaire', methods=['POST'])
 def submit_questionnaire():
-    """Submit lifestyle questionnaire answers."""
     data = request.get_json()
-    
     if not data or 'session_id' not in data:
         return jsonify({'error': 'Missing session_id'}), 400
     
@@ -182,7 +166,7 @@ def submit_questionnaire():
         'success': True,
         'session_id': session_id,
         'message': 'Questionnaire submitted',
-        'next_step': 'Call GET /api/recommendations/<session_id>'
+        'next_step': 'GET /api/recommendations/<session_id>'
     }), 200
 
 
@@ -191,7 +175,6 @@ def submit_questionnaire():
 # ============================================
 @api_bp.route('/recommendations/<session_id>', methods=['GET'])
 def get_recommendations(session_id):
-    """Get personalized dietary recommendations."""
     db = get_db()
     
     session = get_session(db, session_id)
@@ -227,12 +210,17 @@ def get_recommendations(session_id):
 
 
 def generate_personalized_recommendations(findings, questionnaire):
-    """Generate personalized recommendations based on genetics and lifestyle."""
+    """Generate personalized recommendations based on 25 genetic variants and lifestyle."""
     recommendations = {
-        'high_priority': [], 'moderate_priority': [], 'general_advice': [],
-        'foods_to_increase': [], 'foods_to_limit': [], 'supplements_to_consider': []
+        'high_priority': [],
+        'moderate_priority': [],
+        'general_advice': [],
+        'foods_to_increase': [],
+        'foods_to_limit': [],
+        'supplements_to_consider': []
     }
     
+    # Extract questionnaire data
     activity_level = questionnaire.get('activity_level', 'moderate')
     diet_type = questionnaire.get('diet_type', 'omnivore')
     caffeine_intake = questionnaire.get('caffeine_cups_per_day', 0)
@@ -241,6 +229,7 @@ def generate_personalized_recommendations(findings, questionnaire):
     health_goals = questionnaire.get('health_goals', [])
     current_supplements = questionnaire.get('current_supplements', [])
     allergies = questionnaire.get('known_allergies', [])
+    age = questionnaire.get('age', 30)
     
     for finding in findings:
         rsid = finding['rsid']
@@ -248,89 +237,264 @@ def generate_personalized_recommendations(findings, questionnaire):
         condition = finding['condition']
         genotype = finding['genotype']
         base_rec = finding['recommendation']
+        gene = finding['gene']
         
         if genotype is None or 'not found' in finding['interpretation'].lower():
             continue
         
-        # LACTOSE
+        # ==========================================
+        # DIGESTIVE & TASTE VARIANTS
+        # ==========================================
+        
+        # Lactose Intolerance
         if rsid == 'rs4988235' and risk in ['high', 'moderate']:
             rec = {'category': 'Dairy/Lactose', 'genetic_basis': f'{condition} - {genotype}', 'recommendation': base_rec}
             if 'bloating' in digestive_issues or 'gas' in digestive_issues:
-                rec['personalized_note'] = 'You reported digestive issues - lactose intolerance may be contributing.'
+                rec['personalized_note'] = 'Your digestive issues may be related to lactose intolerance.'
             if risk == 'high':
                 recommendations['high_priority'].append(rec)
-                recommendations['foods_to_limit'].append('Regular dairy products')
-                recommendations['foods_to_increase'].append('Lactose-free alternatives')
+                recommendations['foods_to_limit'].append('Regular dairy (milk, ice cream, soft cheese)')
+                recommendations['foods_to_increase'].append('Lactose-free dairy or plant-based alternatives')
             else:
                 recommendations['moderate_priority'].append(rec)
         
-        # CAFFEINE
-        elif rsid == 'rs762551' and risk in ['high', 'moderate']:
-            rec = {'category': 'Caffeine', 'genetic_basis': f'{condition} - {genotype}', 'recommendation': base_rec}
-            if caffeine_intake > 2 and risk == 'high':
-                rec['personalized_note'] = f'You drink {caffeine_intake} cups/day but are a slow metabolizer.'
-                recommendations['high_priority'].append(rec)
-                recommendations['foods_to_limit'].append('Coffee after noon')
-            else:
-                recommendations['moderate_priority'].append(rec)
+        # Celiac Risk
+        elif rsid == 'rs2187668' and risk == 'high':
+            rec = {'category': 'Celiac Risk', 'genetic_basis': f'{condition} - {genotype}', 'recommendation': base_rec}
+            if any(issue in digestive_issues for issue in ['bloating', 'diarrhea', 'gas']):
+                rec['personalized_note'] = 'You have symptoms AND genetic risk. Consider celiac testing (do NOT eliminate gluten first).'
+            recommendations['high_priority'].append(rec)
         
-        # ALCOHOL
+        # Bitter Taste
+        elif rsid == 'rs1726866' and risk == 'high':
+            rec = {'category': 'Taste Perception', 'genetic_basis': f'{condition} - {genotype}', 'recommendation': base_rec}
+            recommendations['moderate_priority'].append(rec)
+            recommendations['general_advice'].append({
+                'category': 'Vegetables',
+                'advice': 'You are a super-taster. Roasting vegetables and adding olive oil/cheese can reduce bitterness.'
+            })
+        
+        # Fat Taste
+        elif rsid == 'rs1761667' and risk == 'high':
+            rec = {'category': 'Fat Perception', 'genetic_basis': f'{condition} - {genotype}', 'recommendation': base_rec}
+            if 'weight_loss' in health_goals:
+                rec['personalized_note'] = 'You may not taste fat well, leading to overeating. Be mindful of portion sizes.'
+            recommendations['moderate_priority'].append(rec)
+        
+        # ==========================================
+        # CAFFEINE & ALCOHOL
+        # ==========================================
+        
+        # Caffeine
+        elif rsid == 'rs762551':
+            if risk == 'high':
+                rec = {'category': 'Caffeine', 'genetic_basis': f'{condition} - {genotype}', 'recommendation': base_rec}
+                if caffeine_intake > 1:
+                    rec['personalized_note'] = f'You drink {caffeine_intake} cups/day but are a slow metabolizer. Limit to 1 cup before noon.'
+                    recommendations['high_priority'].append(rec)
+                    recommendations['foods_to_limit'].append('Coffee after noon, energy drinks')
+                else:
+                    recommendations['moderate_priority'].append(rec)
+            elif risk == 'low' and caffeine_intake <= 4:
+                recommendations['general_advice'].append({
+                    'category': 'Caffeine',
+                    'advice': f'You are a fast caffeine metabolizer. Your {caffeine_intake} cups/day is fine and may have health benefits.'
+                })
+        
+        # Alcohol (ALDH2)
         elif rsid == 'rs671' and risk == 'high':
-            rec = {'category': 'Alcohol', 'genetic_basis': f'{condition} - {genotype}', 'recommendation': base_rec}
+            rec = {'category': 'Alcohol', 'genetic_basis': f'{condition} - {genotype}', 'recommendation': base_rec, 'urgency': 'high'}
             if alcohol_freq in ['moderate', 'frequent']:
-                rec['personalized_note'] = f'You drink {alcohol_freq}ly but have increased health risks.'
+                rec['personalized_note'] = f'You drink {alcohol_freq}ly but have the flush reaction. This significantly increases cancer risk.'
             recommendations['high_priority'].append(rec)
             recommendations['foods_to_limit'].append('Alcoholic beverages')
         
-        # MTHFR
-        elif rsid in ['rs1801133', 'rs1801131'] and risk in ['high', 'moderate']:
+        # Alcohol (ADH1B)
+        elif rsid == 'rs1229984' and risk == 'protective':
+            recommendations['general_advice'].append({
+                'category': 'Alcohol',
+                'advice': 'You have a protective variant that may reduce alcoholism risk through faster alcohol metabolism.'
+            })
+        
+        # ==========================================
+        # VITAMINS
+        # ==========================================
+        
+        # MTHFR C677T
+        elif rsid == 'rs1801133' and risk in ['high', 'moderate']:
             rec = {'category': 'Folate/B-Vitamins', 'genetic_basis': f'{condition} - {genotype}', 'recommendation': base_rec}
+            if 'methylfolate' in [s.lower() for s in current_supplements]:
+                rec['personalized_note'] = 'Good - you are already taking methylfolate.'
+            elif 'folic_acid' in [s.lower() for s in current_supplements]:
+                rec['personalized_note'] = 'Switch from folic acid to methylfolate (L-5-MTHF) for better absorption.'
             if risk == 'high':
                 recommendations['high_priority'].append(rec)
                 recommendations['supplements_to_consider'].append('Methylfolate (L-5-MTHF)')
+                recommendations['supplements_to_consider'].append('Methylcobalamin (B12)')
             else:
                 recommendations['moderate_priority'].append(rec)
-            recommendations['foods_to_increase'].append('Leafy greens, legumes')
+            recommendations['foods_to_increase'].append('Leafy greens, legumes, asparagus')
         
-        # OMEGA-3
+        # MTHFR A1298C
+        elif rsid == 'rs1801131' and risk == 'moderate':
+            rec = {'category': 'Folate Pathway', 'genetic_basis': f'{condition} - {genotype}', 'recommendation': base_rec}
+            recommendations['moderate_priority'].append(rec)
+        
+        # Vitamin B12 Absorption (FUT2)
+        elif rsid == 'rs602662' and risk in ['high', 'moderate']:
+            rec = {'category': 'Vitamin B12', 'genetic_basis': f'{condition} - {genotype}', 'recommendation': base_rec}
+            if diet_type in ['vegan', 'vegetarian']:
+                rec['personalized_note'] = f'As a {diet_type} with reduced B12 absorption, supplementation is essential.'
+                recommendations['high_priority'].append(rec)
+            else:
+                recommendations['moderate_priority'].append(rec)
+            recommendations['supplements_to_consider'].append('Methylcobalamin (B12)')
+            recommendations['foods_to_increase'].append('Meat, fish, eggs, dairy (or supplements if vegan)')
+        
+        # B12 Utilization (MTRR)
+        elif rsid == 'rs1801394' and risk == 'high':
+            rec = {'category': 'B12 Utilization', 'genetic_basis': f'{condition} - {genotype}', 'recommendation': base_rec}
+            if diet_type in ['vegan', 'vegetarian']:
+                rec['personalized_note'] = 'Combined with plant-based diet, B12 supplementation is important.'
+            recommendations['moderate_priority'].append(rec)
+        
+        # Vitamin D Receptor
+        elif rsid == 'rs2228570' and risk == 'high':
+            rec = {'category': 'Vitamin D', 'genetic_basis': f'{condition} - {genotype}', 'recommendation': base_rec}
+            if 'vitamin_d' in [s.lower() for s in current_supplements]:
+                rec['personalized_note'] = 'Good - you are supplementing vitamin D, which is important for your genotype.'
+            recommendations['moderate_priority'].append(rec)
+            recommendations['supplements_to_consider'].append('Vitamin D3 (test blood levels)')
+        
+        # Vitamin D Transport
+        elif rsid == 'rs7041' and risk == 'high':
+            recommendations['general_advice'].append({
+                'category': 'Vitamin D',
+                'advice': 'Your total vitamin D may test low but free vitamin D may be normal. Discuss with your doctor.'
+            })
+        
+        # Vitamin C
+        elif rsid == 'rs33972313' and risk in ['high', 'moderate']:
+            rec = {'category': 'Vitamin C', 'genetic_basis': f'{condition} - {genotype}', 'recommendation': base_rec}
+            recommendations['moderate_priority'].append(rec)
+            recommendations['foods_to_increase'].append('Citrus fruits, berries, peppers, broccoli')
+        
+        # Beta-Carotene Conversion
+        elif rsid == 'rs7501331' and risk == 'high':
+            rec = {'category': 'Vitamin A', 'genetic_basis': f'{condition} - {genotype}', 'recommendation': base_rec}
+            if diet_type == 'vegan':
+                rec['personalized_note'] = 'As a vegan with poor beta-carotene conversion, you may need retinol supplements.'
+                recommendations['high_priority'].append(rec)
+            else:
+                recommendations['moderate_priority'].append(rec)
+            recommendations['foods_to_increase'].append('Eggs, dairy, fish (preformed vitamin A)')
+        
+        # Choline
+        elif rsid == 'rs7946' and risk in ['high', 'moderate']:
+            rec = {'category': 'Choline', 'genetic_basis': f'{condition} - {genotype}', 'recommendation': base_rec}
+            if diet_type == 'vegan':
+                rec['personalized_note'] = 'Choline is mainly in eggs/liver. Vegans with your genotype need supplements.'
+            recommendations['moderate_priority'].append(rec)
+            recommendations['foods_to_increase'].append('Eggs (best source), liver, fish')
+        
+        # ==========================================
+        # MACRONUTRIENTS & WEIGHT
+        # ==========================================
+        
+        # Omega-3 Conversion
         elif rsid == 'rs174546' and risk in ['high', 'moderate']:
             rec = {'category': 'Omega-3', 'genetic_basis': f'{condition} - {genotype}', 'recommendation': base_rec}
             if diet_type in ['vegan', 'vegetarian']:
-                rec['personalized_note'] = f'As a {diet_type}, consider algae-based omega-3 supplements.'
-                recommendations['supplements_to_consider'].append('Algae omega-3')
+                rec['personalized_note'] = f'As a {diet_type} with poor omega-3 conversion, consider algae-based EPA/DHA.'
+                recommendations['supplements_to_consider'].append('Algae omega-3 (EPA/DHA)')
             else:
-                recommendations['foods_to_increase'].append('Fatty fish')
+                recommendations['foods_to_increase'].append('Fatty fish (salmon, sardines, mackerel)')
             if risk == 'high':
                 recommendations['high_priority'].append(rec)
             else:
                 recommendations['moderate_priority'].append(rec)
         
-        # FTO
+        # Saturated Fat Sensitivity
+        elif rsid == 'rs5082' and risk == 'high':
+            rec = {'category': 'Saturated Fat', 'genetic_basis': f'{condition} - {genotype}', 'recommendation': base_rec}
+            if diet_type in ['keto', 'paleo']:
+                rec['personalized_note'] = f'Your {diet_type} diet is high in saturated fat, which may cause weight gain with your genotype.'
+            recommendations['high_priority'].append(rec)
+            recommendations['foods_to_limit'].append('Butter, coconut oil, high-fat dairy')
+            recommendations['foods_to_increase'].append('Olive oil, avocado, nuts')
+        
+        # Carb/Diabetes Risk
+        elif rsid == 'rs7903146' and risk in ['high', 'moderate']:
+            rec = {'category': 'Carb Metabolism', 'genetic_basis': f'{condition} - {genotype}', 'recommendation': base_rec}
+            if 'weight_loss' in health_goals:
+                rec['personalized_note'] = 'Low-carb, Mediterranean-style diet is especially beneficial for your genotype.'
+            if risk == 'high':
+                recommendations['high_priority'].append(rec)
+                recommendations['foods_to_limit'].append('Refined carbs, white bread, sugary foods')
+                recommendations['foods_to_increase'].append('Protein, healthy fats, non-starchy vegetables')
+            else:
+                recommendations['moderate_priority'].append(rec)
+        
+        # FTO Obesity Risk
         elif rsid == 'rs9939609' and risk in ['high', 'moderate']:
             rec = {'category': 'Weight Management', 'genetic_basis': f'{condition} - {genotype}', 'recommendation': base_rec}
             if 'weight_loss' in health_goals:
                 rec['personalized_note'] = 'Focus on protein and exercise rather than just calorie restriction.'
+            if activity_level in ['sedentary', 'light']:
+                rec['personalized_note'] = 'Exercise is particularly effective at counteracting your FTO variant.'
             if risk == 'high':
                 recommendations['high_priority'].append(rec)
             else:
                 recommendations['moderate_priority'].append(rec)
-            recommendations['foods_to_increase'].append('High-protein foods')
+            recommendations['foods_to_increase'].append('High-protein foods, fiber-rich vegetables')
         
-        # CELIAC
-        elif rsid == 'rs2187668' and risk == 'high':
-            rec = {'category': 'Celiac Risk', 'genetic_basis': f'{condition} - {genotype}', 'recommendation': base_rec}
-            if any(issue in digestive_issues for issue in ['bloating', 'diarrhea', 'gas']):
-                rec['personalized_note'] = 'Consider celiac testing (do NOT eliminate gluten before testing).'
-            recommendations['high_priority'].append(rec)
+        # ==========================================
+        # IRON & MINERALS
+        # ==========================================
         
-        # IRON
-        elif rsid == 'rs1799945' and risk == 'moderate':
+        # Iron Absorption
+        elif rsid == 'rs1799945' and risk in ['high', 'moderate']:
             rec = {'category': 'Iron', 'genetic_basis': f'{condition} - {genotype}', 'recommendation': base_rec}
+            if 'iron' in [s.lower() for s in current_supplements]:
+                rec['personalized_note'] = 'You are taking iron supplements but have increased absorption. Check ferritin levels.'
+            if risk == 'high':
+                recommendations['high_priority'].append(rec)
+            else:
+                recommendations['moderate_priority'].append(rec)
+            recommendations['foods_to_limit'].append('Iron supplements (unless prescribed)')
+            recommendations['general_advice'].append({
+                'category': 'Iron',
+                'advice': 'Monitor ferritin levels annually. Consider blood donation if levels are high.'
+            })
+        
+        # ==========================================
+        # ANTIOXIDANTS & DETOX
+        # ==========================================
+        
+        # SOD2 Antioxidant
+        elif rsid == 'rs4880' and risk == 'moderate':
+            rec = {'category': 'Antioxidants', 'genetic_basis': f'{condition} - {genotype}', 'recommendation': base_rec}
             recommendations['moderate_priority'].append(rec)
+            recommendations['foods_to_increase'].append('Berries, leafy greens, colorful vegetables')
+        
+        # Glutathione Detox
+        elif rsid == 'rs1695' and risk in ['high', 'moderate']:
+            rec = {'category': 'Detoxification', 'genetic_basis': f'{condition} - {genotype}', 'recommendation': base_rec}
+            recommendations['moderate_priority'].append(rec)
+            recommendations['foods_to_increase'].append('Cruciferous vegetables (broccoli, cauliflower, Brussels sprouts)')
+            recommendations['foods_to_increase'].append('Garlic, onions (sulfur-rich foods)')
+        
+        # Exercise Response
+        elif rsid == 'rs4341':
+            rec = {'category': 'Exercise', 'genetic_basis': f'{condition} - {genotype}', 'recommendation': base_rec}
+            recommendations['general_advice'].append({
+                'category': 'Fitness',
+                'advice': base_rec
+            })
     
     # Remove duplicates
     for key in ['foods_to_increase', 'foods_to_limit', 'supplements_to_consider']:
-        recommendations[key] = list(set(recommendations[key]))
+        recommendations[key] = list(dict.fromkeys(recommendations[key]))
     
     return recommendations
 
@@ -340,18 +504,17 @@ def generate_personalized_recommendations(findings, questionnaire):
 # ============================================
 @api_bp.route('/questionnaire/template', methods=['GET'])
 def get_questionnaire_template():
-    """Get questionnaire structure."""
     return jsonify({
         'questionnaire': {
             'age': {'type': 'number', 'label': 'Age', 'min': 18, 'max': 100},
             'sex': {'type': 'select', 'label': 'Biological Sex', 'options': ['male', 'female', 'other']},
             'activity_level': {'type': 'select', 'label': 'Activity Level', 'options': ['sedentary', 'light', 'moderate', 'active', 'very_active']},
-            'diet_type': {'type': 'select', 'label': 'Diet Type', 'options': ['omnivore', 'vegetarian', 'vegan', 'pescatarian', 'keto', 'other']},
+            'diet_type': {'type': 'select', 'label': 'Diet Type', 'options': ['omnivore', 'vegetarian', 'vegan', 'pescatarian', 'keto', 'paleo', 'other']},
             'alcohol_frequency': {'type': 'select', 'label': 'Alcohol', 'options': ['never', 'rare', 'occasional', 'moderate', 'frequent']},
             'caffeine_cups_per_day': {'type': 'number', 'label': 'Caffeine (cups/day)', 'min': 0, 'max': 10},
             'digestive_issues': {'type': 'multiselect', 'label': 'Digestive Issues', 'options': ['bloating', 'gas', 'diarrhea', 'constipation', 'heartburn', 'none']},
-            'health_goals': {'type': 'multiselect', 'label': 'Health Goals', 'options': ['weight_loss', 'weight_gain', 'energy', 'sleep', 'digestion', 'muscle', 'general']},
-            'current_supplements': {'type': 'multiselect', 'label': 'Supplements', 'options': ['vitamin_d', 'vitamin_b12', 'iron', 'omega_3', 'methylfolate', 'none']},
+            'health_goals': {'type': 'multiselect', 'label': 'Health Goals', 'options': ['weight_loss', 'weight_gain', 'energy', 'sleep', 'digestion', 'muscle', 'longevity', 'general']},
+            'current_supplements': {'type': 'multiselect', 'label': 'Supplements', 'options': ['vitamin_d', 'vitamin_b12', 'iron', 'omega_3', 'methylfolate', 'folic_acid', 'multivitamin', 'none']},
             'known_allergies': {'type': 'multiselect', 'label': 'Allergies', 'options': ['dairy', 'gluten', 'nuts', 'shellfish', 'soy', 'eggs', 'none']}
         }
     }), 200
@@ -362,7 +525,6 @@ def get_questionnaire_template():
 # ============================================
 @api_bp.route('/session/<session_id>', methods=['GET'])
 def get_session_status(session_id):
-    """Get session status."""
     db = get_db()
     session = get_session(db, session_id)
     
@@ -384,7 +546,6 @@ def get_session_status(session_id):
 # ============================================
 @api_bp.route('/session/<session_id>', methods=['DELETE'])
 def delete_session(session_id):
-    """Delete all session data (GDPR compliance)."""
     db = get_db()
     session = get_session(db, session_id)
     
@@ -404,11 +565,29 @@ def delete_session(session_id):
 
 
 # ============================================
-# ENDPOINT: List SNPs
+# ENDPOINT: List SNPs (Updated for 25)
 # ============================================
 @api_bp.route('/snps', methods=['GET'])
 def list_available_snps():
-    """List analyzed SNPs."""
-    snps_list = [{'rsid': rsid, 'gene': data['gene'], 'condition': data['condition']} 
-                 for rsid, data in NUTRIGENOMICS_SNPS.items()]
-    return jsonify({'total_snps': len(snps_list), 'snps': snps_list}), 200
+    snps_list = []
+    categories = {}
+    
+    for rsid, data in NUTRIGENOMICS_SNPS.items():
+        cat = data.get('category', 'other')
+        if cat not in categories:
+            categories[cat] = []
+        
+        snp_info = {
+            'rsid': rsid,
+            'gene': data['gene'],
+            'condition': data['condition'],
+            'category': cat
+        }
+        snps_list.append(snp_info)
+        categories[cat].append(snp_info)
+    
+    return jsonify({
+        'total_snps': len(snps_list),
+        'by_category': {cat: len(snps) for cat, snps in categories.items()},
+        'snps': snps_list
+    }), 200

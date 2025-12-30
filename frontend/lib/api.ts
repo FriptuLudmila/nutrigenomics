@@ -59,6 +59,12 @@ export interface QuestionnaireAnswers {
   known_allergies: string[];
 }
 
+export interface NutrientRadarData {
+  category: string;
+  score: number;
+  findings_count: number;
+}
+
 export interface RecommendationsResponse {
   success: boolean;
   session_id: string;
@@ -79,6 +85,10 @@ export interface RecommendationsResponse {
     foods_to_limit: string[];
     supplements_to_consider: string[];
   };
+  nutrient_radar: {
+    radar_chart: NutrientRadarData[];
+    description: string;
+  };
   disclaimer: string;
 }
 
@@ -92,6 +102,53 @@ export interface Recommendation {
 export interface GeneralAdvice {
   category: string;
   advice: string;
+}
+
+export interface MealMacros {
+  protein_g: number;
+  carbs_g: number;
+  fats_g: number;
+}
+
+export interface Meal {
+  name: string;
+  description: string;
+  ingredients?: string[];
+  macros: MealMacros;
+}
+
+export interface Snack {
+  name: string;
+  description: string;
+  macros: MealMacros;
+}
+
+export interface DayMealPlan {
+  day: number;
+  genetic_note: string;
+  meals: {
+    breakfast: Meal;
+    lunch: Meal;
+    dinner: Meal;
+    snacks: Snack[];
+  };
+}
+
+export interface MealPlanResponse {
+  success: boolean;
+  session_id: string;
+  meal_plan: {
+    success?: boolean;
+    days?: number;
+    meal_plan?: {
+      days: DayMealPlan[];
+    };
+    generated_by?: string;
+    disclaimer?: string;
+    error?: string;
+    fallback_advice?: string;
+  };
+  generated_at: string;
 }
 
 const api = axios.create({
@@ -134,6 +191,14 @@ export const nutrigenomicsAPI = {
 
   getQuestionnaireTemplate: async (): Promise<any> => {
     const response = await api.get('/api/questionnaire/template');
+    return response.data;
+  },
+
+  generateMealPlan: async (sessionId: string, days: number = 3): Promise<MealPlanResponse> => {
+    const response = await api.post('/api/generate-meal-plan', {
+      session_id: sessionId,
+      days,
+    });
     return response.data;
   },
 };

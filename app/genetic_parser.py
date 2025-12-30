@@ -19,9 +19,19 @@ from enum import Enum
 class RiskLevel(Enum):
     """Risk assessment levels for genetic variants"""
     LOW = "low"
-    MODERATE = "moderate" 
+    MODERATE = "moderate"
     HIGH = "high"
     PROTECTIVE = "protective"
+
+    def to_score(self) -> int:
+        """Convert risk level to numerical score for visualization"""
+        scores = {
+            RiskLevel.LOW: 20,
+            RiskLevel.MODERATE: 60,
+            RiskLevel.HIGH: 100,
+            RiskLevel.PROTECTIVE: 10
+        }
+        return scores.get(self, 20)
 
 
 @dataclass
@@ -935,7 +945,7 @@ class GeneticParser:
         """Export analysis results as a dictionary (for JSON API responses)"""
         if not self.findings:
             self.analyze_all()
-        
+
         return {
             'file_info': {
                 'source': self.source,
@@ -955,6 +965,53 @@ class GeneticParser:
                 }
                 for v in self.findings
             ]
+        }
+
+    def get_nutrient_radar_data(self) -> Dict:
+        """
+        Generate radar chart data for nutrient needs visualization.
+        Groups findings by nutrient category and calculates average risk scores.
+
+        Returns:
+            Dictionary with nutrient categories and their risk scores (0-100)
+        """
+        if not self.findings:
+            self.analyze_all()
+
+        # Define nutrient category groupings
+        nutrient_categories = {
+            'B Vitamins': ['rs1801133', 'rs1801131', 'rs602662', 'rs1801394'],  # MTHFR, FUT2, MTRR
+            'Vitamin D': ['rs2228570', 'rs7041'],  # VDR, GC
+            'Vitamin C': ['rs33972313'],  # SLC23A1
+            'Vitamin A': ['rs7501331'],  # BCMO1
+            'Omega-3': ['rs174546'],  # FADS1
+            'Iron': ['rs1799945'],  # HFE
+            'Choline': ['rs7946'],  # PEMT
+            'Detox': ['rs1695', 'rs4880'],  # GSTP1, SOD2
+            'Carb Metabolism': ['rs7903146'],  # TCF7L2
+            'Fat Metabolism': ['rs5082', 'rs7412', 'rs1761667']  # APOA2, APOE, CD36
+        }
+
+        radar_data = []
+
+        for category, rsids in nutrient_categories.items():
+            # Get findings for this category
+            category_findings = [f for f in self.findings if f.rsid in rsids and f.genotype]
+
+            if category_findings:
+                # Calculate average risk score for this nutrient category
+                scores = [f.risk_level.to_score() for f in category_findings]
+                avg_score = sum(scores) / len(scores)
+
+                radar_data.append({
+                    'category': category,
+                    'score': round(avg_score, 1),
+                    'findings_count': len(category_findings)
+                })
+
+        return {
+            'radar_chart': radar_data,
+            'description': 'Higher scores indicate greater nutritional attention needed for that category'
         }
 
 

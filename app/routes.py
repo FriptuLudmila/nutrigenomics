@@ -14,6 +14,7 @@ from .models import (
     delete_session_data
 )
 from .encryption import encrypt_genetic_findings, decrypt_genetic_findings
+from .ai_meal_planner import generate_meal_plan, get_fallback_meal_plan
 
 api_bp = Blueprint('api', __name__)
 
@@ -176,35 +177,41 @@ def submit_questionnaire():
 @api_bp.route('/recommendations/<session_id>', methods=['GET'])
 def get_recommendations(session_id):
     db = get_db()
-    
+
     session = get_session(db, session_id)
     if not session:
         return jsonify({'error': 'Invalid session_id'}), 404
-    
+
     genetic_results = get_genetic_results(db, session_id)
     if not genetic_results:
         return jsonify({'error': 'Please call /api/analyze first'}), 400
-    
+
     decrypted_findings = decrypt_genetic_findings(genetic_results.findings_encrypted)
-    
+
     questionnaire = get_questionnaire(db, session_id)
     questionnaire_answers = questionnaire.answers if questionnaire else {}
-    
+
     recommendations = generate_personalized_recommendations(decrypted_findings, questionnaire_answers)
-    
+
+    # Generate radar chart data for nutrient visualization
+    parser = GeneticParser(session.filepath)
+    parser.analyze_all()
+    radar_data = parser.get_nutrient_radar_data()
+
     recs_model = Recommendations.create(session_id=session_id, recommendations=recommendations)
     save_recommendations(db, recs_model)
-    
+
     session.status = 'complete'
     session.has_recommendations = True
     save_session(db, session)
-    
+
     return jsonify({
         'success': True,
         'session_id': session_id,
         'generated_at': datetime.utcnow().isoformat(),
         'genetic_summary': genetic_results.summary,
         'recommendations': recommendations,
+        'nutrient_radar': radar_data,
         'disclaimer': 'This is for educational purposes only. Consult a healthcare professional.'
     }), 200
 
@@ -538,6 +545,68 @@ def get_session_status(session_id):
         'has_genetic_results': session.has_genetic_results,
         'has_questionnaire': session.has_questionnaire,
         'has_recommendations': session.has_recommendations
+    }), 200
+
+
+# ============================================
+# ENDPOINT: Generate AI Meal Plan
+# ============================================
+@api_bp.route('/generate-meal-plan', methods=['POST'])
+def create_meal_plan():
+    """
+    Generate AI-powered personalized meal plan using Gemini API.
+    Requires genetic analysis and questionnaire to be completed.
+    """
+    data = request.get_json()
+    if not data or 'session_id' not in data:
+        return jsonify({'error': 'Missing session_id'}), 400
+
+    session_id = data['session_id']
+    days = data.get('days', 3)  # Default to 3-day plan
+
+    if days < 1 or days > 7:
+        return jsonify({'error': 'Days must be between 1 and 7'}), 400
+
+    db = get_db()
+
+    # Verify session exists
+    session = get_session(db, session_id)
+    if not session:
+        return jsonify({'error': 'Invalid session_id'}), 404
+
+    # Get genetic results
+    genetic_results = get_genetic_results(db, session_id)
+    if not genetic_results:
+        return jsonify({'error': 'Please complete genetic analysis first'}), 400
+
+    # Get questionnaire
+    questionnaire = get_questionnaire(db, session_id)
+    if not questionnaire:
+        return jsonify({'error': 'Please complete questionnaire first'}), 400
+
+    # Get recommendations
+    recommendations = get_recs_from_db(db, session_id)
+    if not recommendations:
+        # Generate recommendations if not already done
+        decrypted_findings = decrypt_genetic_findings(genetic_results.findings_encrypted)
+        questionnaire_answers = questionnaire.answers
+        recs = generate_personalized_recommendations(decrypted_findings, questionnaire_answers)
+    else:
+        recs = recommendations.recommendations
+
+    # Generate meal plan using AI
+    meal_plan_data = generate_meal_plan(
+        genetic_summary=genetic_results.summary,
+        recommendations=recs,
+        questionnaire=questionnaire.answers,
+        days=days
+    )
+
+    return jsonify({
+        'success': meal_plan_data.get('success', False),
+        'session_id': session_id,
+        'meal_plan': meal_plan_data,
+        'generated_at': datetime.utcnow().isoformat()
     }), 200
 
 

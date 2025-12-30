@@ -3,6 +3,8 @@
 import { useState, useEffect } from 'react';
 import { nutrigenomicsAPI, type RecommendationsResponse } from '@/lib/api';
 import { AlertCircle, AlertTriangle, CheckCircle, Pill, Printer, RotateCw, Info, TrendingUp } from 'lucide-react';
+import NutrientRadarChart from './NutrientRadarChart';
+import MealPlanGenerator from './MealPlanGenerator';
 
 interface RecommendationsReportProps {
   sessionId: string;
@@ -67,6 +69,14 @@ export default function RecommendationsReport({ sessionId, onReset }: Recommenda
           Based on {genetic_summary.nutrigenomics_snps_analyzed} genetic variants analyzed
         </p>
       </div>
+
+      {/* Nutrient Need Radar Chart */}
+      {data.nutrient_radar && data.nutrient_radar.radar_chart.length > 0 && (
+        <NutrientRadarChart
+          data={data.nutrient_radar.radar_chart}
+          description={data.nutrient_radar.description}
+        />
+      )}
 
       {/* Genetic Summary */}
       <div className="bg-white rounded-lg p-6 border border-slate-200">
@@ -171,6 +181,9 @@ export default function RecommendationsReport({ sessionId, onReset }: Recommenda
           </div>
         </div>
       </section>
+
+      {/* AI Meal Planner */}
+      <MealPlanGenerator sessionId={sessionId} />
 
       {/* General Advice */}
       {recommendations.general_advice.length > 0 && (

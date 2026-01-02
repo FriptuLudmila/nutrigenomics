@@ -1,7 +1,7 @@
 """
 AI-Powered Meal Plan Generator
 ================================
-Uses Google Gemini API to generate personalized meal plans based on genetic data and lifestyle.
+Uses Groq API (Llama 3) to generate personalized meal plans based on genetic data and lifestyle.
 
 Author: Caraman (Bachelor Thesis Project)
 Date: December 2024
@@ -9,15 +9,14 @@ Date: December 2024
 
 import os
 import json
-from google import genai
-from google.genai import types
+from groq import Groq
 from typing import Dict, List
 
-# Configure Gemini API
-GEMINI_API_KEY = os.getenv('GEMINI_API_KEY')
+# Configure Groq API
+GROQ_API_KEY = os.getenv('GROQ_API_KEY')
 
-if GEMINI_API_KEY:
-    client = genai.Client(api_key=GEMINI_API_KEY)
+if GROQ_API_KEY:
+    client = Groq(api_key=GROQ_API_KEY)
 else:
     client = None
 
@@ -38,7 +37,7 @@ def generate_meal_plan(genetic_summary: Dict, recommendations: Dict, questionnai
 
     if not client:
         return {
-            'error': 'Gemini API not configured. Please set GEMINI_API_KEY environment variable.',
+            'error': 'Groq API not configured. Please set GROQ_API_KEY environment variable.',
             'fallback_advice': 'Focus on the dietary recommendations provided in your report.'
         }
 
@@ -46,28 +45,40 @@ def generate_meal_plan(genetic_summary: Dict, recommendations: Dict, questionnai
     prompt = _build_meal_plan_prompt(genetic_summary, recommendations, questionnaire, days)
 
     try:
-        # Use the stable model with better free tier limits
-        response = client.models.generate_content(
-            model='gemini-1.5-flash',
-            contents=prompt
+        # Use Groq with Llama 3.3 70B (fast and smart)
+        response = client.chat.completions.create(
+            model="llama-3.3-70b-versatile",
+            messages=[
+                {
+                    "role": "system",
+                    "content": "You are a nutrigenomics expert who creates personalized meal plans. You MUST respond with valid JSON only, no additional text."
+                },
+                {
+                    "role": "user",
+                    "content": prompt
+                }
+            ],
+            temperature=0.7,
+            max_tokens=4096,
+            response_format={"type": "json_object"}
         )
 
         # Parse the JSON response
-        meal_plan = json.loads(response.text)
+        meal_plan = json.loads(response.choices[0].message.content)
 
         return {
             'success': True,
             'days': days,
             'meal_plan': meal_plan,
-            'generated_by': 'Gemini 1.5 Flash',
+            'generated_by': 'Llama 3.3 70B (via Groq)',
             'disclaimer': 'This meal plan is AI-generated based on your genetic profile and should be reviewed with a healthcare professional or registered dietitian.'
         }
 
-    except json.JSONDecodeError:
+    except json.JSONDecodeError as e:
         # If JSON parsing fails, return structured fallback
         return {
-            'error': 'Failed to parse AI response',
-            'raw_response': response.text if response else None,
+            'error': f'Failed to parse AI response: {str(e)}',
+            'raw_response': response.choices[0].message.content if response else None,
             'fallback_advice': 'Please consult with a registered dietitian for personalized meal planning.'
         }
     except Exception as e:
@@ -78,7 +89,7 @@ def generate_meal_plan(genetic_summary: Dict, recommendations: Dict, questionnai
 
 
 def _build_meal_plan_prompt(genetic_summary: Dict, recommendations: Dict, questionnaire: Dict, days: int) -> str:
-    """Build the prompt for Gemini API based on user data."""
+    """Build the prompt for Groq API based on user data."""
 
     # Extract key dietary constraints
     diet_type = questionnaire.get('diet_type', 'omnivore')

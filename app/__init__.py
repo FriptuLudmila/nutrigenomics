@@ -24,8 +24,8 @@ def create_app(config_name='default'):
     # Load configuration
     app.config.from_object(config[config_name])
 
-    # Enable CORS for frontend
-    CORS(app, resources={r"/api/*": {"origins": ["http://localhost:3000"]}})
+    # Enable CORS for all origins
+    CORS(app, supports_credentials=True)
 
     # Initialize database connection
     with app.app_context():
@@ -34,7 +34,9 @@ def create_app(config_name='default'):
 
     # Register blueprints (routes)
     from .routes import api_bp
+    from .auth_routes import auth_bp
     app.register_blueprint(api_bp, url_prefix='/api')
+    app.register_blueprint(auth_bp, url_prefix='/api/auth')
     
     # Register main route for health check
     @app.route('/')

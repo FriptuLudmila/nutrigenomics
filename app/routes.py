@@ -14,6 +14,7 @@ from .models import (
     delete_session_data
 )
 from .encryption import encrypt_genetic_findings, decrypt_genetic_findings
+from .file_encryption import encrypt_and_replace, decrypt_file, cleanup_session_files
 from .ai_meal_planner import generate_meal_plan, get_fallback_meal_plan
 
 api_bp = Blueprint('api', __name__)
@@ -31,36 +32,62 @@ def allowed_file(filename):
 def upload_file():
     if 'file' not in request.files:
         return jsonify({'error': 'No file provided'}), 400
-    
+
     file = request.files['file']
     if file.filename == '':
         return jsonify({'error': 'No file selected'}), 400
-    
+
     if not allowed_file(file.filename):
         return jsonify({'error': 'Invalid file type', 'allowed': '.txt, .csv, .zip'}), 400
-    
+
+    # Get user_id from JWT token if provided (optional for backwards compatibility)
+    user_id = None
+    auth_header = request.headers.get('Authorization')
+    if auth_header and auth_header.startswith('Bearer '):
+        token = auth_header.split(' ')[1]
+        try:
+            from .auth import verify_token
+            payload = verify_token(token)
+            if payload:
+                user_id = payload.get('user_id')
+        except:
+            pass  # Continue without user_id if token is invalid
+
     try:
         filename = secure_filename(file.filename)
-        session = Session.create_new(filepath='', filename=filename)
+        session = Session.create_new(filepath='', filename=filename, user_id=user_id)
         unique_filename = f"{session.session_id}_{filename}"
         filepath = os.path.join(current_app.config['UPLOAD_FOLDER'], unique_filename)
-        
+
+        # Save file temporarily
         file.save(filepath)
-        session.filepath = filepath
-        session.file_size_bytes = os.path.getsize(filepath)
-        
+        original_size = os.path.getsize(filepath)
+
+        # Encrypt the file immediately after upload
+        try:
+            encrypted_path = encrypt_and_replace(filepath, keep_original=False)
+            session.filepath = encrypted_path
+            session.file_size_bytes = original_size  # Store original size for user reference
+            print(f"[SECURITY] File encrypted: {encrypted_path}")
+        except Exception as e:
+            print(f"[ERROR] File encryption failed: {e}")
+            # If encryption fails, delete the unencrypted file
+            if os.path.exists(filepath):
+                os.remove(filepath)
+            return jsonify({'error': 'File encryption failed'}), 500
+
         db = get_db()
         if not save_session(db, session):
             return jsonify({'error': 'Database error'}), 500
-        
+
         return jsonify({
             'success': True,
             'session_id': session.session_id,
-            'message': 'File uploaded successfully',
+            'message': 'File uploaded and encrypted successfully',
             'file_info': {'original_name': filename, 'size_bytes': session.file_size_bytes},
             'next_step': 'POST /api/analyze with session_id'
         }), 201
-        
+
     except Exception as e:
         return jsonify({'error': 'Upload failed', 'message': str(e)}), 500
 
@@ -94,10 +121,22 @@ def analyze_genetic_data():
             }
         }), 200
     
+    # Decrypt file temporarily for analysis
+    decrypted_path = None
     try:
-        parser = GeneticParser(session.filepath)
+        # Check if file is encrypted
+        if session.filepath.endswith('.encrypted'):
+            print(f"[SECURITY] Decrypting file for analysis: {session.filepath}")
+            decrypted_path = decrypt_file(session.filepath)
+            analysis_path = decrypted_path
+        else:
+            # Legacy: file not encrypted (backwards compatibility)
+            analysis_path = session.filepath
+
+        # Parse the genetic data
+        parser = GeneticParser(analysis_path)
         results = parser.export_to_dict()
-        
+
         findings = results['findings']
         summary = {
             'total_snps_in_file': parser.snp_count,
@@ -107,32 +146,45 @@ def analyze_genetic_data():
             'low_risk': len([f for f in findings if f['risk_level'] == 'low']),
             'protective': len([f for f in findings if f['risk_level'] == 'protective'])
         }
-        
+
         encrypted_findings = encrypt_genetic_findings(findings)
-        
+
         genetic_results = GeneticResults.create(
             session_id=session_id,
             file_info=results['file_info'],
             encrypted_findings=encrypted_findings,
             summary=summary
         )
-        
+
         if not save_genetic_results(db, genetic_results):
             return jsonify({'error': 'Database error'}), 500
-        
+
         session.status = 'analyzed'
         session.has_genetic_results = True
         save_session(db, session)
-        
+
+        # Clean up: delete both encrypted and decrypted files after analysis
+        # Data is now safely stored encrypted in the database
+        print(f"[SECURITY] Cleaning up files after analysis")
+        cleanup_session_files(session.filepath, secure=True)
+
         return jsonify({
             'success': True,
             'session_id': session_id,
             'results': {'file_info': results['file_info'], 'findings': findings, 'summary': summary},
             'next_step': 'POST /api/questionnaire'
         }), 200
-        
+
     except Exception as e:
         return jsonify({'error': 'Analysis failed', 'message': str(e)}), 500
+    finally:
+        # Always clean up decrypted file if it was created
+        if decrypted_path and os.path.exists(decrypted_path):
+            try:
+                os.remove(decrypted_path)
+                print(f"[SECURITY] Temporary decrypted file removed: {decrypted_path}")
+            except Exception as e:
+                print(f"[WARNING] Failed to remove temporary file: {e}")
 
 
 # ============================================
@@ -193,10 +245,28 @@ def get_recommendations(session_id):
 
     recommendations = generate_personalized_recommendations(decrypted_findings, questionnaire_answers)
 
-    # Generate radar chart data for nutrient visualization
-    parser = GeneticParser(session.filepath)
-    parser.analyze_all()
-    radar_data = parser.get_nutrient_radar_data()
+    # Generate radar chart data from DB findings (file is deleted after analysis)
+    nutrient_categories = {
+        'B Vitamins': ['rs1801133', 'rs1801131', 'rs602662', 'rs1801394'],
+        'Vitamin D': ['rs2228570', 'rs7041'],
+        'Vitamin C': ['rs33972313'],
+        'Vitamin A': ['rs7501331'],
+        'Omega-3': ['rs174546'],
+        'Iron': ['rs1799945'],
+        'Choline': ['rs7946'],
+        'Detox': ['rs1695', 'rs4880'],
+        'Carb Metabolism': ['rs7903146'],
+        'Fat Metabolism': ['rs5082', 'rs7412', 'rs1761667'],
+    }
+    risk_scores = {'low': 20, 'moderate': 60, 'high': 100, 'protective': 10}
+    findings_by_rsid = {f['rsid']: f for f in decrypted_findings if f.get('rsid')}
+    radar_chart = []
+    for category, rsids in nutrient_categories.items():
+        cat_findings = [findings_by_rsid[r] for r in rsids if r in findings_by_rsid and findings_by_rsid[r].get('genotype')]
+        if cat_findings:
+            scores = [risk_scores.get(f.get('risk_level', 'low'), 20) for f in cat_findings]
+            radar_chart.append({'category': category, 'score': round(sum(scores) / len(scores), 1), 'findings_count': len(cat_findings)})
+    radar_data = {'radar_chart': radar_chart, 'description': 'Higher scores indicate greater nutritional attention needed for that category'}
 
     recs_model = Recommendations.create(session_id=session_id, recommendations=recommendations)
     save_recommendations(db, recs_model)
@@ -617,18 +687,19 @@ def create_meal_plan():
 def delete_session(session_id):
     db = get_db()
     session = get_session(db, session_id)
-    
+
     if not session:
         return jsonify({'error': 'Session not found'}), 404
-    
+
+    # Securely delete all files associated with this session
     try:
-        if os.path.exists(session.filepath):
-            os.remove(session.filepath)
-    except Exception:
-        pass
-    
+        cleanup_session_files(session.filepath, secure=True)
+    except Exception as e:
+        print(f"[WARNING] File cleanup failed: {e}")
+
+    # Delete database records
     if delete_session_data(db, session_id):
-        return jsonify({'success': True, 'message': 'All data deleted'}), 200
+        return jsonify({'success': True, 'message': 'All data securely deleted'}), 200
     else:
         return jsonify({'error': 'Deletion failed'}), 500
 

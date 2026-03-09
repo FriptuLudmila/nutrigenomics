@@ -23,14 +23,15 @@ class Session:
     created_at: datetime
     updated_at: datetime
     file_size_bytes: int = 0
-    
+    user_id: Optional[str] = None  # Link to user account
+
     # Flags for what data exists
     has_genetic_results: bool = False
     has_questionnaire: bool = False
     has_recommendations: bool = False
-    
+
     @classmethod
-    def create_new(cls, filepath: str, filename: str, file_size: int = 0):
+    def create_new(cls, filepath: str, filename: str, file_size: int = 0, user_id: Optional[str] = None):
         """Create a new session"""
         now = datetime.utcnow()
         return cls(
@@ -41,6 +42,7 @@ class Session:
             created_at=now,
             updated_at=now,
             file_size_bytes=file_size,
+            user_id=user_id,
             has_genetic_results=False,
             has_questionnaire=False,
             has_recommendations=False
@@ -201,6 +203,20 @@ def get_session(db, session_id: str) -> Optional[Session]:
     except Exception as e:
         print(f"[ERROR] Failed to get session: {e}")
         return None
+
+
+def get_user_sessions(db, user_id: str) -> List[Session]:
+    """Get all sessions for a user, ordered by most recent first"""
+    try:
+        docs = db.sessions.find({'user_id': user_id}).sort('created_at', -1)
+        sessions = []
+        for doc in docs:
+            doc.pop('_id', None)
+            sessions.append(Session.from_dict(doc))
+        return sessions
+    except Exception as e:
+        print(f"[ERROR] Failed to get user sessions: {e}")
+        return []
 
 
 def save_genetic_results(db, results: GeneticResults) -> bool:

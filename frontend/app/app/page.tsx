@@ -1,8 +1,9 @@
 'use client';
 
 import { useState } from 'react';
+import { useRouter } from 'next/navigation';
 import { nutrigenomicsAPI, type QuestionnaireAnswers } from '@/lib/api';
-import { CheckCircle2, Circle } from 'lucide-react';
+import { CheckCircle2, Circle, User, LogOut } from 'lucide-react';
 import FileUpload from '@/components/FileUpload';
 import Questionnaire from '@/components/Questionnaire';
 import RecommendationsReport from '@/components/RecommendationsReport';
@@ -10,6 +11,7 @@ import RecommendationsReport from '@/components/RecommendationsReport';
 type Step = 'upload' | 'analyzing' | 'questionnaire' | 'recommendations';
 
 export default function Home() {
+  const router = useRouter();
   const [step, setStep] = useState<Step>('upload');
   const [sessionId, setSessionId] = useState<string>('');
   const [fileName, setFileName] = useState<string>('');
@@ -64,6 +66,12 @@ export default function Home() {
     setError('');
   };
 
+  const handleLogout = () => {
+    localStorage.clear();
+    sessionStorage.clear();
+    router.push('/landing');
+  };
+
   const steps = [
     { id: 'upload', label: 'Upload Data' },
     { id: 'analyzing', label: 'Analysis' },
@@ -90,7 +98,26 @@ export default function Home() {
 
         {/* Content */}
         <div className="container mx-auto px-4 py-8 max-w-7xl relative z-10">
-          <div className="text-center relative top-8">
+          <div className="flex justify-between items-start mb-4">
+            <div></div>
+            <div className="flex gap-2">
+              <button
+                onClick={() => router.push('/app/profile')}
+                className="flex items-center gap-2 px-4 py-2 text-sm font-medium text-slate-700 hover:text-slate-900 hover:bg-slate-100 rounded-lg transition-colors"
+              >
+                <User className="w-4 h-4" />
+                Profile
+              </button>
+              <button
+                onClick={handleLogout}
+                className="flex items-center gap-2 px-4 py-2 text-sm font-medium text-red-600 hover:text-red-700 hover:bg-red-50 rounded-lg transition-colors"
+              >
+                <LogOut className="w-4 h-4" />
+                Logout
+              </button>
+            </div>
+          </div>
+          <div className="text-center">
             <h1 className="text-3xl font-bold text-slate-900 mb-2">Nutrigenomics Analysis</h1>
             <p className="text-base text-slate-700">Personalized nutrition based on your genetics</p>
           </div>

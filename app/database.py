@@ -29,7 +29,7 @@ class Database:
     def connect(self, uri=None, db_name=None):
         """
         Connect to MongoDB.
-        
+
         Args:
             uri: MongoDB connection string (default: localhost)
             db_name: Database name (default: nutrigenomics)
@@ -37,10 +37,26 @@ class Database:
         # Get connection settings from environment or use defaults
         uri = uri or os.environ.get('MONGODB_URI', 'mongodb://localhost:27017/')
         db_name = db_name or os.environ.get('MONGODB_DB', 'nutrigenomics')
-        
+
+        # Security: Check if TLS is enabled in connection string
+        if 'tls=true' in uri.lower() or 'ssl=true' in uri.lower():
+            print("[SECURITY] MongoDB TLS/SSL enabled")
+
         try:
-            # Create client with timeout
-            self.client = MongoClient(uri, serverSelectionTimeoutMS=5000)
+            # Create client with timeout and security options
+            connection_options = {
+                'serverSelectionTimeoutMS': 5000,
+                'connectTimeoutMS': 10000,
+                'socketTimeoutMS': 20000,
+            }
+
+            # Add TLS CA file if specified
+            tls_ca_file = os.environ.get('MONGODB_TLS_CA_FILE')
+            if tls_ca_file:
+                connection_options['tlsCAFile'] = tls_ca_file
+                print(f"[SECURITY] Using TLS CA file: {tls_ca_file}")
+
+            self.client = MongoClient(uri, **connection_options)
             
             # Test connection
             self.client.admin.command('ping')
@@ -64,15 +80,30 @@ class Database:
     
     def _create_indexes(self):
         """Create database indexes for performance"""
+        # Users collection - index on email (unique)
+        self.db.users.create_index("email", unique=True)
+
+        # Users - index on user_id
+        self.db.users.create_index("user_id", unique=True)
+
         # Sessions collection - index on session_id
         self.db.sessions.create_index("session_id", unique=True)
-        
+
+        # Sessions - index on user_id for fetching user's sessions
+        self.db.sessions.create_index("user_id")
+
         # Sessions - index on created_at for cleanup of old sessions
         self.db.sessions.create_index("created_at")
-        
+
         # Genetic results - index on session_id
         self.db.genetic_results.create_index("session_id", unique=True)
-        
+
+        # Verification codes - index on email
+        self.db.verification_codes.create_index("email", unique=True)
+
+        # Verification codes - TTL index to auto-delete expired codes
+        self.db.verification_codes.create_index("expires_at", expireAfterSeconds=0)
+
         print("    Database indexes created")
     
     def disconnect(self):
@@ -88,6 +119,11 @@ class Database:
         return self._connected
     
     # Collection shortcuts
+    @property
+    def users(self):
+        """Users collection"""
+        return self.db.users if self.db is not None else None
+
     @property
     def sessions(self):
         """Sessions collection"""
@@ -107,6 +143,11 @@ class Database:
     def recommendations(self):
         """Recommendations collection"""
         return self.db.recommendations if self.db is not None else None
+
+    @property
+    def verification_codes(self):
+        """Verification codes collection"""
+        return self.db.verification_codes if self.db is not None else None
 
 
 # Global database instance

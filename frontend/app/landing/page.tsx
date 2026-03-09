@@ -1,11 +1,20 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
+import { useRouter } from 'next/navigation';
 import { Dna, Shield, TrendingUp, Zap, ChevronRight, CheckCircle } from 'lucide-react';
 import AuthModal from '@/components/AuthModal';
 
 export default function LandingPage() {
+  const router = useRouter();
   const [showAuthModal, setShowAuthModal] = useState(false);
+
+  useEffect(() => {
+    const token = localStorage.getItem('auth_token') || sessionStorage.getItem('auth_token');
+    if (token) {
+      router.replace('/app');
+    }
+  }, [router]);
 
   return (
     <>

@@ -163,10 +163,18 @@ export const nutrigenomicsAPI = {
     const formData = new FormData();
     formData.append('file', file);
 
+    // Get JWT token from localStorage if available
+    const token = typeof window !== 'undefined' ? localStorage.getItem('auth_token') : null;
+    const headers: any = {
+      'Content-Type': 'multipart/form-data',
+    };
+
+    if (token) {
+      headers['Authorization'] = `Bearer ${token}`;
+    }
+
     const response = await api.post('/api/upload', formData, {
-      headers: {
-        'Content-Type': 'multipart/form-data',
-      },
+      headers,
     });
     return response.data;
   },

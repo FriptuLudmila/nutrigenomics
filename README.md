@@ -1,6 +1,6 @@
 # Nutrigenomics — Personalized Dietary Recommendations from Genetic Data
 
-A full-stack web application that analyzes raw genetic data files (23andMe, AncestryDNA) across 25 clinically-relevant SNPs and generates personalized nutrition recommendations, supplement advice, and AI-powered meal plans based on a user's unique genome and lifestyle.
+GENY-O - a full-stack web application that analyzes raw genetic data files (23andMe, AncestryDNA) across 25 clinically-relevant SNPs and generates personalized nutrition recommendations, supplement advice, and AI-powered meal plans based on a user's unique genome and lifestyle.
 
 ---
 

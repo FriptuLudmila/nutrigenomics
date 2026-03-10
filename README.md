@@ -642,3 +642,20 @@ npm run dev
 ---
 
 *This is for educational and informational purposes only. Genetic risk information does not constitute medical advice. Always consult a qualified healthcare professional before making dietary or health decisions.*
+
+---
+
+## Jenkins Deployment Credentials
+
+The following credentials must be configured in **Jenkins → Manage Jenkins → Credentials** before running the pipeline. All are **Secret text** type unless noted.
+
+| Credential ID | Type | Description |
+|---|---|---|
+| `nutrigenomics-ssh` | SSH Username with private key | SSH deploy key for cloning the GitHub repository |
+| `nutrigenomics-mongo-password` | Secret text | MongoDB root password (set a strong random password) |
+| `nutrigenomics-secret-key` | Secret text | Flask/JWT signing secret — generate with `python -c "import secrets; print(secrets.token_hex(32))"` |
+| `nutrigenomics-encryption-key` | Secret text | Fernet key for encrypting genetic data — generate with `python -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"` |
+| `nutrigenomics-groq-key` | Secret text | Groq API key from [console.groq.com](https://console.groq.com) |
+| `nutrigenomics-smtp-password` | Secret text | Gmail App Password (requires 2FA enabled on the Gmail account) |
+
+> Non-secret config values (DB name, SMTP server/port, sender email) are set directly in `Jenkinsfile` — update `SMTP_EMAIL` and the git `url` before first run.

@@ -1,0 +1,340 @@
+// Copyright (c) Daniil Schipschi. All rights reserved.
+// Licensed under the proprietary license. See LICENSE file in the project root.
+pipeline {
+    agent {
+        docker {
+            image 'docker:24.0-cli'
+            args '-v /var/run/docker.sock:/var/run/docker.sock -u root'
+        }
+    }
+
+    environment {
+        BACKEND_IMAGE = "ampra-api:latest"
+        BACKEND_CONTAINER = "ampra-api"
+        API_DOMAIN = "api.ampra.solar"
+
+        FRONTEND_IMAGE = "ampra-ui:latest"
+        FRONTEND_CONTAINER = "ampra-ui"
+        FRONTEND_DOMAIN = "ampra.solar"
+
+        DB_IMAGE = "postgres:16-alpine"
+        DB_CONTAINER = "ampra-db"
+        DB_NAME = "ampradb"
+        DB_USER = "ampra"
+
+        MONGO_IMAGE = "mongo:8.0"
+        MONGO_CONTAINER = "ampra-mongo"
+        MONGO_DB_NAME = "ampradb"
+        MONGO_USER = "ampra"
+
+        MINIO_IMAGE = "quay.io/minio/minio"
+        MINIO_CONTAINER = "ampra-minio"
+        MINIO_USER = "ampra"
+        MINIO_API_PORT = "9000"
+        MINIO_CONSOLE_PORT = "9001"
+        MINIO_DOMAIN = "minio.ampra.solar"
+
+        REDIS_IMAGE = "redis:7-alpine"
+        REDIS_CONTAINER = "ampra-redis"
+
+        ML_IMAGE = "ampra-ml:latest"
+        ML_CONTAINER = "ampra-ml"
+
+        EMQX_IMAGE = "emqx/emqx:5.8"
+        EMQX_CONTAINER = "ampra-emqx"
+        EMQX_DOMAIN = "emqx.ampra.solar"
+        MQTT_HOST = "ampra.solar"
+
+        MQTT_INGESTION_IMAGE = "ampra-ingestion:latest"
+        MQTT_INGESTION_CONTAINER = "ampra-ingestion"
+
+        DOCS_IMAGE = "ampra-docs:latest"
+        DOCS_CONTAINER = "ampra-docs"
+        DOCS_DOMAIN = "docs.ampra.solar"
+
+        TRAEFIK_ENTRYPOINT = "websecure"
+        TRAEFIK_CERTRESOLVER = "myresolver"
+        DEPLOY_PORT = "80"
+        NETWORK = "web"
+    }
+
+    stages {
+        stage('Checkout') {
+            steps {
+                    git branch: 'main', 
+                    url: 'git@github.com:bytegrip/Ampra.git', 
+                    credentialsId: 'ampra-ssh'
+            }
+        }
+
+        stage('Lint UI Project') {
+            steps {
+                sh '''
+                    docker run --rm \
+                        -v "$(pwd)/src/Ampra.UI":/app \
+                        -w /app \
+                        node:22-alpine \
+                        sh -c "npm ci && npm run lint"
+                '''
+            }
+        }
+
+        stage('Lint API Project') {
+            steps {
+                sh '''
+                    docker run --rm \
+                        -v "$(pwd)":/src \
+                        -w /src \
+                        mcr.microsoft.com/dotnet/sdk:10.0 \
+                        dotnet format Ampra.sln --verify-no-changes
+                '''
+            }
+        }
+
+        stage('Build UI Image') {
+            steps {
+                sh "docker build --build-arg VITE_API_URL=https://${API_DOMAIN} -t ${FRONTEND_IMAGE} -f src/Ampra.UI/Dockerfile src/Ampra.UI"
+            }
+        }
+
+        stage('Build API Image') {
+            steps {
+                sh "docker build -t ${BACKEND_IMAGE} -f src/Ampra.Web/Dockerfile ."
+            }
+        }
+
+        stage('Build ML Image') {
+            steps {
+                sh "docker build -t ${ML_IMAGE} -f src/Ampra.ML/Dockerfile src/Ampra.ML"
+            }
+        }
+
+        stage('Build Ingestion Image') {
+            steps {
+                sh "docker build -t ${MQTT_INGESTION_IMAGE} -f src/Ampra.MQTT/Dockerfile ."
+            }
+        }
+
+        stage('Build Docs Image') {
+            steps {
+                sh "docker build -t ${DOCS_IMAGE} -f src/Ampra.Docs/Dockerfile src/Ampra.Docs"
+            }
+        }
+
+        stage('Deploy PostgreSQL') {
+            steps {
+                withCredentials([string(credentialsId: 'ampra-db-password', variable: 'DB_PASSWORD')]) {
+                    sh 'docker rm -f ${DB_CONTAINER} || true'
+                    sh '''
+                        docker run -d \
+                            --name ${DB_CONTAINER} \
+                            -e POSTGRES_USER=${DB_USER} \
+                            -e POSTGRES_PASSWORD=${DB_PASSWORD} \
+                            -e POSTGRES_DB=${DB_NAME} \
+                            -v ampra-db-data:/var/lib/postgresql/data \
+                            --network=${NETWORK} \
+                            ${DB_IMAGE}
+                    '''
+                }
+            }
+        }
+
+        stage('Deploy MongoDB') {
+            steps {
+                withCredentials([string(credentialsId: 'ampra-mongo-password', variable: 'MONGO_PASSWORD')]) {
+                    sh 'docker rm -f ${MONGO_CONTAINER} || true'
+                    sh '''
+                        docker run -d \
+                            --name ${MONGO_CONTAINER} \
+                            -e MONGO_INITDB_ROOT_USERNAME=${MONGO_USER} \
+                            -e MONGO_INITDB_ROOT_PASSWORD=${MONGO_PASSWORD} \
+                            -e MONGO_INITDB_DATABASE=${MONGO_DB_NAME} \
+                            -v ampra-mongo-data:/data/db \
+                            --network=${NETWORK} \
+                            ${MONGO_IMAGE}
+                    '''
+                }
+            }
+        }
+
+        stage('Deploy MinIO') {
+            steps {
+                withCredentials([string(credentialsId: 'ampra-minio-password', variable: 'MINIO_PASSWORD')]) {
+                    sh 'docker rm -f ${MINIO_CONTAINER} || true'
+                    sh '''
+                        docker run -d \
+                            --name ${MINIO_CONTAINER} \
+                            -e MINIO_ROOT_USER=${MINIO_USER} \
+                            -e MINIO_ROOT_PASSWORD=${MINIO_PASSWORD} \
+                            -e MINIO_SERVER_URL=https://${MINIO_DOMAIN} \
+                            -v ampra-minio-data:/data \
+                            --label traefik.enable=true \
+                            --label "traefik.http.routers.ampraminio.rule=Host(\\`${MINIO_DOMAIN}\\`)" \
+                            --label "traefik.http.routers.ampraminio.entrypoints=${TRAEFIK_ENTRYPOINT}" \
+                            --label "traefik.http.routers.ampraminio.tls.certresolver=${TRAEFIK_CERTRESOLVER}" \
+                            --label "traefik.http.services.ampraminio.loadbalancer.server.port=9000" \
+                            --network=${NETWORK} \
+                            ${MINIO_IMAGE} server /data --console-address ":9001"
+                    '''
+                }
+            }
+        }
+
+        stage('Deploy Redis') {
+            steps {
+                sh 'docker rm -f ${REDIS_CONTAINER} || true'
+                sh '''
+                    docker run -d \
+                        --name ${REDIS_CONTAINER} \
+                        -v ampra-redis-data:/data \
+                        --network=${NETWORK} \
+                        ${REDIS_IMAGE}
+                '''
+            }
+        }
+
+        stage('Deploy EMQX') {
+            steps {
+                withCredentials([string(credentialsId: 'ampra-emqx-password', variable: 'EMQX_PASSWORD')]) {
+                    sh 'docker rm -f ${EMQX_CONTAINER} || true'
+                    sh 'docker volume rm ampra-emqx-data || true'
+                    sh '''
+                        docker run -d \
+                            --name ${EMQX_CONTAINER} \
+                            -e EMQX_DASHBOARD__DEFAULT_PASSWORD=${EMQX_PASSWORD} \
+                            -v "${WORKSPACE}/src/Ampra.MQTT/emqx.prod.conf:/opt/emqx/etc/emqx.conf:ro" \
+                            -v ampra-emqx-data:/opt/emqx/data \
+                            -p 1883:1883 \
+                            --label traefik.enable=true \
+                            --label "traefik.http.routers.ampraemqx.rule=Host(\\`${EMQX_DOMAIN}\\`)" \
+                            --label "traefik.http.routers.ampraemqx.entrypoints=${TRAEFIK_ENTRYPOINT}" \
+                            --label "traefik.http.routers.ampraemqx.tls.certresolver=${TRAEFIK_CERTRESOLVER}" \
+                            --label "traefik.http.services.ampraemqx.loadbalancer.server.port=18083" \
+                            --network=${NETWORK} \
+                            ${EMQX_IMAGE}
+                    '''
+                }
+            }
+        }
+
+        stage('Run containers') {
+            steps {
+                withCredentials([
+                    string(credentialsId: 'ampra-db-password', variable: 'DB_PASSWORD'),
+                    string(credentialsId: 'ampra-mongo-password', variable: 'MONGO_PASSWORD'),
+                    string(credentialsId: 'ampra-minio-password', variable: 'MINIO_PASSWORD'),
+                    string(credentialsId: 'ampra-sendgrid-key', variable: 'SENDGRID_API_KEY'),
+                    string(credentialsId: 'ampra-overseer-email', variable: 'OVERSEER_EMAIL'),
+                    string(credentialsId: 'ampra-emqx-password', variable: 'EMQX_PASSWORD')
+                ]) {
+                    sh 'docker rm -f ${FRONTEND_CONTAINER} || true || true'
+                    sh 'docker rm -f ${BACKEND_CONTAINER} || true || true'
+                    sh 'docker rm -f ${ML_CONTAINER} || true || true'
+                    sh 'docker rm -f ${MQTT_INGESTION_CONTAINER} || true'
+                    sh 'docker rm -f ${DOCS_CONTAINER} || true'
+
+                    sh '''
+                        docker run -d \
+                            --name ${FRONTEND_CONTAINER} \
+                            --label traefik.enable=true \
+                            --label "traefik.http.routers.ampraui.rule=Host(\\`${FRONTEND_DOMAIN}\\`)" \
+                            --label "traefik.http.routers.ampraui.entrypoints=${TRAEFIK_ENTRYPOINT}" \
+                            --label "traefik.http.routers.ampraui.tls.certresolver=${TRAEFIK_CERTRESOLVER}" \
+                            --label "traefik.http.services.ampraui.loadbalancer.server.port=${DEPLOY_PORT}" \
+                            --network=${NETWORK} \
+                            ${FRONTEND_IMAGE}
+                    '''
+
+                    sh '''
+                        docker run -d \
+                            --name ${BACKEND_CONTAINER} \
+                            -e PORT=80 \
+                            -e CORS_ALLOWED_ORIGINS=https://${FRONTEND_DOMAIN} \
+                            -e ConnectionStrings__DefaultConnection="Host=${DB_CONTAINER};Port=5432;Database=${DB_NAME};Username=${DB_USER};Password=${DB_PASSWORD}" \
+                            -e ConnectionStrings__MongoDb="mongodb://${MONGO_USER}:${MONGO_PASSWORD}@${MONGO_CONTAINER}:27017/${MONGO_DB_NAME}?authSource=admin" \
+                            -e MinIO__Endpoint=${MINIO_CONTAINER}:9000 \
+                            -e MinIO__PublicUrl=${MINIO_DOMAIN} \
+                            -e MinIO__AccessKey=${MINIO_USER} \
+                            -e MinIO__SecretKey=${MINIO_PASSWORD} \
+                            -e MinIO__BucketName=ampra-assets \
+                            -e MinIO__UseSSL=false \
+                            -e MinIO__PublicUseSSL=true \
+                            -e Integrations__SendGridApiKey=${SENDGRID_API_KEY} \
+                            -e Auth__OverseerEmail=${OVERSEER_EMAIL} \
+                            -e ConnectionStrings__Redis=${REDIS_CONTAINER}:6379 \
+                            -e ML__ServiceUrl=http://${ML_CONTAINER}:5050 \
+                            -e MqttBroker__Host=${MQTT_HOST} \
+                            -e MqttBroker__Port=1883 \
+                            -e MqttBroker__InternalHost=${EMQX_CONTAINER} \
+                            -e MqttBroker__SuperUser=ampra-ingestion \
+                            -e MqttBroker__SuperPassword=${EMQX_PASSWORD} \
+                            --label traefik.enable=true \
+                            --label "traefik.http.routers.ampra-api.rule=Host(\\`${API_DOMAIN}\\`)" \
+                            --label "traefik.http.routers.ampra-api.entrypoints=${TRAEFIK_ENTRYPOINT}" \
+                            --label "traefik.http.routers.ampra-api.tls.certresolver=${TRAEFIK_CERTRESOLVER}" \
+                            --label "traefik.http.services.ampra-api.loadbalancer.server.port=${DEPLOY_PORT}" \
+                            --network=${NETWORK} \
+                            ${BACKEND_IMAGE}
+                    '''
+
+                    sh '''
+                        docker run -d \
+                            --name ${ML_CONTAINER} \
+                            -e MONGO_URL=mongodb://${MONGO_USER}:${MONGO_PASSWORD}@${MONGO_CONTAINER}:27017/${MONGO_DB_NAME}?authSource=admin \
+                            -e MONGO_DB=${MONGO_DB_NAME} \
+                            -e REDIS_URL=redis://${REDIS_CONTAINER}:6379/0 \
+                            -e MINIO_ENDPOINT=${MINIO_CONTAINER}:9000 \
+                            -e MINIO_ACCESS_KEY=${MINIO_USER} \
+                            -e MINIO_SECRET_KEY=${MINIO_PASSWORD} \
+                            -e MINIO_BUCKET=ampra-assets \
+                            --network=${NETWORK} \
+                            ${ML_IMAGE}
+                    '''
+
+                    sh '''
+                        docker run -d \
+                            --name ${MQTT_INGESTION_CONTAINER} \
+                            -e Mqtt__BrokerHost=${EMQX_CONTAINER} \
+                            -e Mqtt__BrokerPort=1883 \
+                            -e Mqtt__ClientId=ampra-ingestion-worker \
+                            -e Mqtt__Username=ampra-ingestion \
+                            -e Mqtt__Password=${EMQX_PASSWORD} \
+                            -e Mqtt__TopicFilter=ampra/sources/+/data \
+                            -e "ConnectionStrings__MongoDb=mongodb://${MONGO_USER}:${MONGO_PASSWORD}@${MONGO_CONTAINER}:27017/${MONGO_DB_NAME}?authSource=admin" \
+                            -e "ConnectionStrings__PostgreSql=Host=${DB_CONTAINER};Port=5432;Database=${DB_NAME};Username=${DB_USER};Password=${DB_PASSWORD}" \
+                            -e Ingestion__MongoDatabase=${MONGO_DB_NAME} \
+                            -e Ingestion__MongoCollection=normalized_sun_source_data \
+                            -e Ingestion__ThrottleSeconds=5 \
+                            --network=${NETWORK} \
+                            --restart=unless-stopped \
+                            ${MQTT_INGESTION_IMAGE}
+                    '''
+
+                    sh '''
+                        docker run -d \
+                            --name ${DOCS_CONTAINER} \
+                            --label traefik.enable=true \
+                            --label "traefik.http.routers.ampradocs.rule=Host(\\`${DOCS_DOMAIN}\\`)" \
+                            --label "traefik.http.routers.ampradocs.entrypoints=${TRAEFIK_ENTRYPOINT}" \
+                            --label "traefik.http.routers.ampradocs.tls.certresolver=${TRAEFIK_CERTRESOLVER}" \
+                            --label "traefik.http.services.ampradocs.loadbalancer.server.port=${DEPLOY_PORT}" \
+                            --network=${NETWORK} \
+                            ${DOCS_IMAGE}
+                    '''
+                }
+            }
+        }
+    }
+
+    post {
+        success {
+            echo "Deployed frontend to ${FRONTEND_DOMAIN} and backend to ${API_DOMAIN}."
+            echo "MinIO storage available at ${MINIO_DOMAIN}"
+            echo "EMQX MQTT broker on port 1883, ingestion worker connected."
+            echo "Documentation available at ${DOCS_DOMAIN}"
+        }
+        failure {
+            echo "Deployment failed."
+        }
+    }
+}

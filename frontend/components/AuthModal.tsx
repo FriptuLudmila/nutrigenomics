@@ -4,6 +4,8 @@ import { useState } from 'react';
 import { X, Eye, EyeOff } from 'lucide-react';
 import { useRouter } from 'next/navigation';
 
+const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000';
+
 interface AuthModalProps {
   isOpen: boolean;
   onClose: () => void;
@@ -40,7 +42,7 @@ export default function AuthModal({ isOpen, onClose }: AuthModalProps) {
     try {
       if (mode === 'signin') {
         // Sign in
-        const response = await fetch('http://localhost:5000/api/auth/login', {
+        const response = await fetch(`${API_BASE_URL}/api/auth/login`, {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
@@ -67,7 +69,7 @@ export default function AuthModal({ isOpen, onClose }: AuthModalProps) {
         router.push('/app');
       } else if (mode === 'signup') {
         // Register - send verification code
-        const response = await fetch('http://localhost:5000/api/auth/register', {
+        const response = await fetch(`${API_BASE_URL}/api/auth/register`, {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
@@ -98,7 +100,7 @@ export default function AuthModal({ isOpen, onClose }: AuthModalProps) {
         setMode('verify');
       } else if (mode === 'verify') {
         // Verify email with code
-        const response = await fetch('http://localhost:5000/api/auth/verify', {
+        const response = await fetch(`${API_BASE_URL}/api/auth/verify`, {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
@@ -137,7 +139,7 @@ export default function AuthModal({ isOpen, onClose }: AuthModalProps) {
     setSuccessMessage('');
 
     try {
-      const response = await fetch('http://localhost:5000/api/auth/resend-code', {
+      const response = await fetch(`${API_BASE_URL}/api/auth/resend-code`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',

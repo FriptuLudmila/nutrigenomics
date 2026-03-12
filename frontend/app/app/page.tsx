@@ -3,7 +3,7 @@
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { nutrigenomicsAPI, type QuestionnaireAnswers } from '@/lib/api';
-import { CheckCircle2, Circle, User, LogOut } from 'lucide-react';
+import { CheckCircle2, Circle, User, LogOut, Dna } from 'lucide-react';
 import FileUpload from '@/components/FileUpload';
 import Questionnaire from '@/components/Questionnaire';
 import RecommendationsReport from '@/components/RecommendationsReport';
@@ -24,15 +24,12 @@ export default function Home() {
       setError('');
       setFileName(file.name);
 
-      // Upload file
       const uploadResponse = await nutrigenomicsAPI.uploadFile(file);
       setSessionId(uploadResponse.session_id);
 
-      // Automatically analyze
       setStep('analyzing');
       await nutrigenomicsAPI.analyzeGenetics(uploadResponse.session_id);
 
-      // Move to questionnaire
       setStep('questionnaire');
     } catch (err) {
       const error = err as { response?: { data?: { message?: string } } };
@@ -73,21 +70,20 @@ export default function Home() {
   };
 
   const steps = [
-    { id: 'upload', label: 'Upload Data' },
-    { id: 'analyzing', label: 'Analysis' },
-    { id: 'questionnaire', label: 'Lifestyle' },
+    { id: 'upload',          label: 'Upload Data' },
+    { id: 'analyzing',       label: 'Analysis' },
+    { id: 'questionnaire',   label: 'Lifestyle' },
     { id: 'recommendations', label: 'Results' }
   ];
 
   const currentStepIndex = steps.findIndex(s => s.id === step);
 
   return (
-    <div className="min-h-screen bg-slate-50">
+    <div className="min-h-screen bg-ng-cream">
       {/* Header */}
-      <header className="bg-white border-b border-slate-200 relative overflow-hidden">
-        {/* Background Image - Repeating Pattern */}
+      <header className="bg-ng-dark border-b border-ng-dark-2 relative overflow-hidden">
         <div
-          className="absolute inset-0 opacity-15"
+          className="absolute inset-0 opacity-[0.04]"
           style={{
             backgroundImage: 'url(/genes.png)',
             backgroundRepeat: 'repeat-x',
@@ -95,22 +91,23 @@ export default function Home() {
             backgroundPosition: 'center'
           }}
         />
-
-        {/* Content */}
-        <div className="container mx-auto px-4 py-8 max-w-7xl relative z-10">
-          <div className="flex justify-between items-start mb-4">
-            <div></div>
+        <div className="container mx-auto px-4 py-6 max-w-7xl relative z-10">
+          <div className="flex justify-between items-center mb-6">
+            <button onClick={() => router.push('/landing')} className="flex items-center gap-2 hover:opacity-80 transition-opacity">
+              <Dna className="w-7 h-7 text-ng-lime" />
+              <span className="text-lg font-bold text-white">GenyO</span>
+            </button>
             <div className="flex gap-2">
               <button
                 onClick={() => router.push('/app/profile')}
-                className="flex items-center gap-2 px-4 py-2 text-sm font-medium text-slate-700 hover:text-slate-900 hover:bg-slate-100 rounded-lg transition-colors"
+                className="flex items-center gap-2 px-4 py-2 text-sm font-semibold text-ng-cream hover:text-ng-lime hover:bg-ng-dark-2 rounded-lg transition-colors"
               >
                 <User className="w-4 h-4" />
                 Profile
               </button>
               <button
                 onClick={handleLogout}
-                className="flex items-center gap-2 px-4 py-2 text-sm font-medium text-red-600 hover:text-red-700 hover:bg-red-50 rounded-lg transition-colors"
+                className="flex items-center gap-2 px-4 py-2 text-sm font-semibold text-[#E6E6E6] hover:text-red-400 hover:bg-ng-dark-2 rounded-lg transition-colors"
               >
                 <LogOut className="w-4 h-4" />
                 Logout
@@ -118,41 +115,41 @@ export default function Home() {
             </div>
           </div>
           <div className="text-center">
-            <h1 className="text-3xl font-bold text-slate-900 mb-2">Nutrigenomics Analysis</h1>
-            <p className="text-base text-slate-700">Personalized nutrition based on your genetics</p>
+            <h1 className="text-3xl font-bold text-white mb-2">GenyO Analysis</h1>
+            <p className="text-base text-[#A0B8A0] font-medium">Personalized nutrition based on your genetics</p>
           </div>
         </div>
       </header>
 
       {/* Progress Indicator */}
-      <div className="bg-white border-b border-slate-200">
-        <div className="container mx-auto px-4 py-6 max-w-4xl">
+      <div className="bg-ng-dark-2 border-b border-ng-dark-3">
+        <div className="container mx-auto px-4 py-5 max-w-4xl">
           <div className="flex items-center justify-between">
             {steps.map((s, idx) => (
               <div key={s.id} className="flex items-center flex-1">
                 <div className="flex flex-col items-center flex-1">
                   <div className={`flex items-center justify-center w-10 h-10 rounded-full border-2 transition-all ${
                     idx < currentStepIndex
-                      ? 'border-blue-600 bg-blue-600'
+                      ? 'border-ng-lime bg-ng-lime'
                       : idx === currentStepIndex
-                      ? 'border-blue-600 bg-white'
-                      : 'border-slate-300 bg-white'
+                      ? 'border-ng-lime bg-transparent'
+                      : 'border-ng-dark-3 bg-transparent'
                   }`}>
                     {idx < currentStepIndex ? (
-                      <CheckCircle2 className="w-6 h-6 text-white" />
+                      <CheckCircle2 className="w-6 h-6 text-ng-dark" />
                     ) : (
-                      <Circle className={`w-5 h-5 ${idx === currentStepIndex ? 'text-blue-600' : 'text-slate-300'}`} />
+                      <Circle className={`w-5 h-5 ${idx === currentStepIndex ? 'text-ng-lime' : 'text-ng-dark-3'}`} />
                     )}
                   </div>
-                  <span className={`mt-2 text-xs font-medium ${
-                    idx <= currentStepIndex ? 'text-slate-900' : 'text-slate-400'
+                  <span className={`mt-2 text-xs font-semibold ${
+                    idx <= currentStepIndex ? 'text-ng-cream' : 'text-ng-dark-3'
                   }`}>
                     {s.label}
                   </span>
                 </div>
                 {idx < steps.length - 1 && (
                   <div className={`h-0.5 flex-1 mx-2 ${
-                    idx < currentStepIndex ? 'bg-blue-600' : 'bg-slate-200'
+                    idx < currentStepIndex ? 'bg-ng-lime' : 'bg-ng-dark-3'
                   }`} />
                 )}
               </div>
@@ -162,10 +159,10 @@ export default function Home() {
       </div>
 
       {/* Main Content */}
-      <main className="container mx-auto px-4 py-8 max-w-7xl">
+      <main className="container mx-auto px-4 py-10 max-w-7xl">
         {error && (
-          <div className="mb-6 p-4 bg-red-50 border border-red-200 rounded-lg">
-            <p className="text-sm text-red-800">{error}</p>
+          <div className="mb-6 p-4 bg-red-50 border border-red-200 rounded-xl">
+            <p className="text-sm text-red-800 font-medium">{error}</p>
           </div>
         )}
 
@@ -177,13 +174,13 @@ export default function Home() {
           {step === 'analyzing' && (
             <div className="text-center py-16">
               <div className="inline-block relative">
-                <div className="w-16 h-16 border-4 border-slate-200 border-t-blue-600 rounded-full animate-spin"></div>
+                <div className="w-16 h-16 border-4 border-ng-border border-t-ng-lime rounded-full animate-spin" />
               </div>
-              <h2 className="text-xl font-semibold text-slate-900 mt-6">Analyzing Your Genetics</h2>
-              <p className="text-sm text-slate-600 mt-2">Processing {fileName}</p>
+              <h2 className="text-xl font-semibold text-ng-text mt-6">Analyzing Your Genetics</h2>
+              <p className="text-sm text-ng-muted mt-2 font-medium">Processing {fileName}</p>
               <div className="mt-8 max-w-md mx-auto">
-                <div className="h-2 bg-slate-100 rounded-full overflow-hidden">
-                  <div className="h-full bg-blue-600 rounded-full animate-pulse" style={{ width: '70%' }}></div>
+                <div className="h-2 bg-ng-border rounded-full overflow-hidden">
+                  <div className="h-full bg-ng-lime rounded-full animate-pulse" style={{ width: '70%' }} />
                 </div>
               </div>
             </div>
@@ -199,13 +196,13 @@ export default function Home() {
         </div>
 
         {/* Footer */}
-        <footer className="mt-12 pt-8 border-t border-slate-200">
+        <footer className="mt-12 pt-8 border-t border-ng-border">
           <div className="text-center">
-            <p className="text-xs text-slate-500">
-              <strong>Medical Disclaimer:</strong> This analysis is for educational and informational purposes only.
+            <p className="text-xs text-ng-muted font-medium">
+              <strong className="text-ng-text-2">Medical Disclaimer:</strong> This analysis is for educational and informational purposes only.
               Always consult qualified healthcare professionals before making dietary or lifestyle changes.
             </p>
-            <p className="text-xs text-slate-400 mt-2">
+            <p className="text-xs text-ng-muted mt-2">
               Your genetic data is encrypted and secure. GDPR compliant.
             </p>
           </div>

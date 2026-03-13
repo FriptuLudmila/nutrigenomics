@@ -52,17 +52,19 @@ export default function ProfilePage() {
 
       const data = await response.json();
 
+      if (response.status === 401) {
+        localStorage.clear();
+        sessionStorage.clear();
+        router.push('/landing');
+        return;
+      }
+
       if (!response.ok) throw new Error(data.error || 'Failed to load profile');
 
       setProfile(data.user);
       setEditForm({ name: data.user.name, age: data.user.age.toString(), sex: data.user.sex });
     } catch (err: any) {
       setError(err.message || 'Failed to load profile');
-      if (err.message.includes('Authentication')) {
-        localStorage.clear();
-        sessionStorage.clear();
-        router.push('/landing');
-      }
     } finally {
       setLoading(false);
     }
@@ -86,6 +88,13 @@ export default function ProfilePage() {
       });
 
       const data = await response.json();
+
+      if (response.status === 401) {
+        localStorage.clear();
+        sessionStorage.clear();
+        router.push('/landing');
+        return;
+      }
 
       if (!response.ok) throw new Error(data.error || 'Failed to update profile');
 
@@ -311,11 +320,11 @@ export default function ProfilePage() {
                   className="bg-white border border-ng-border rounded-xl p-5 hover:border-ng-lime hover:shadow-sm transition-all cursor-pointer"
                   onClick={() => handleViewReport(report.session_id)}
                 >
-                  <div className="flex items-start justify-between">
-                    <div className="flex-1">
-                      <div className="flex items-center gap-2 mb-2">
-                        <FileText className="w-5 h-5 text-ng-dark" />
-                        <h3 className="font-semibold text-ng-text">{report.original_filename}</h3>
+                  <div className="flex items-start justify-between gap-3 min-w-0">
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center gap-2 mb-2 min-w-0">
+                        <FileText className="w-5 h-5 text-ng-dark flex-shrink-0" />
+                        <h3 className="font-semibold text-ng-text truncate" title={report.original_filename}>{report.original_filename}</h3>
                         {report.is_complete
                           ? <CheckCircle className="w-4 h-4 text-ng-lime" />
                           : <Clock className="w-4 h-4 text-orange-400" />

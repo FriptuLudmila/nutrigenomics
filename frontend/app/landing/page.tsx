@@ -38,8 +38,8 @@ export default function LandingPage() {
             <div className="flex items-center gap-8">
               <div className="hidden md:flex items-center gap-6 text-ng-cream text-base font-semibold">
                 <span className="text-ng-lime cursor-default">Home</span>
-                <span className="hover:text-ng-lime transition-colors cursor-default">How It Works</span>
-                <span className="hover:text-ng-lime transition-colors cursor-default">Privacy</span>
+                <button onClick={() => router.push('/how-it-works')} className="hover:text-ng-lime transition-colors">How It Works</button>
+                <button onClick={() => router.push('/privacy')} className="hover:text-ng-lime transition-colors">Privacy</button>
               </div>
               <button
                 onClick={() => isLoggedIn ? router.push('/app') : setShowAuthModal(true)}

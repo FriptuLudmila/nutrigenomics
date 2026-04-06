@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { nutrigenomicsAPI, type QuestionnaireAnswers } from '@/lib/api';
 import { CheckCircle2, Circle, User, LogOut, Dna } from 'lucide-react';
@@ -10,6 +10,31 @@ import RecommendationsReport from '@/components/RecommendationsReport';
 
 type Step = 'upload' | 'analyzing' | 'questionnaire' | 'recommendations';
 
+const SESSION_KEY = 'genyo_session';
+
+interface PersistedSession {
+  sessionId: string;
+  step: Step;
+  fileName: string;
+}
+
+function persistSession(sessionId: string, step: Step, fileName: string) {
+  sessionStorage.setItem(SESSION_KEY, JSON.stringify({ sessionId, step, fileName }));
+}
+
+function restoreSession(): PersistedSession | null {
+  try {
+    const raw = sessionStorage.getItem(SESSION_KEY);
+    return raw ? (JSON.parse(raw) as PersistedSession) : null;
+  } catch {
+    return null;
+  }
+}
+
+function clearPersistedSession() {
+  sessionStorage.removeItem(SESSION_KEY);
+}
+
 export default function Home() {
   const router = useRouter();
   const [step, setStep] = useState<Step>('upload');
@@ -17,6 +42,41 @@ export default function Home() {
   const [fileName, setFileName] = useState<string>('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string>('');
+
+  useEffect(() => {
+    const token = localStorage.getItem('auth_token') || sessionStorage.getItem('auth_token');
+    if (!token) {
+      router.replace('/landing');
+      return;
+    }
+
+    const saved = restoreSession();
+    if (!saved) return;
+
+    setSessionId(saved.sessionId);
+    setFileName(saved.fileName);
+
+    if (saved.step === 'analyzing') {
+      setStep('analyzing');
+      setLoading(true);
+      nutrigenomicsAPI
+        .analyzeGenetics(saved.sessionId)
+        .then(() => {
+          setStep('questionnaire');
+          persistSession(saved.sessionId, 'questionnaire', saved.fileName);
+        })
+        .catch(() => {
+          clearPersistedSession();
+          setStep('upload');
+          setSessionId('');
+          setFileName('');
+          setError('Previous analysis could not be resumed. Please upload your file again.');
+        })
+        .finally(() => setLoading(false));
+    } else {
+      setStep(saved.step);
+    }
+  }, [router]);
 
   const handleFileUpload = async (file: File) => {
     try {
@@ -26,14 +86,15 @@ export default function Home() {
 
       const uploadResponse = await nutrigenomicsAPI.uploadFile(file);
       setSessionId(uploadResponse.session_id);
-
       setStep('analyzing');
-      await nutrigenomicsAPI.analyzeGenetics(uploadResponse.session_id);
+      persistSession(uploadResponse.session_id, 'analyzing', file.name);
 
+      await nutrigenomicsAPI.analyzeGenetics(uploadResponse.session_id);
       setStep('questionnaire');
+      persistSession(uploadResponse.session_id, 'questionnaire', file.name);
     } catch (err) {
-      const error = err as { response?: { data?: { message?: string } } };
-      setError(error.response?.data?.message || 'Upload failed. Please try again.');
+      const error = err as { response?: { data?: { error?: string; message?: string } } };
+      setError(error.response?.data?.error || error.response?.data?.message || 'Upload failed. Please try again.');
       console.error('Upload error:', err);
     } finally {
       setLoading(false);
@@ -47,9 +108,10 @@ export default function Home() {
 
       await nutrigenomicsAPI.submitQuestionnaire(sessionId, answers);
       setStep('recommendations');
+      persistSession(sessionId, 'recommendations', fileName);
     } catch (err) {
-      const error = err as { response?: { data?: { message?: string } } };
-      setError(error.response?.data?.message || 'Failed to submit questionnaire.');
+      const error = err as { response?: { data?: { error?: string; message?: string } } };
+      setError(error.response?.data?.error || error.response?.data?.message || 'Failed to submit questionnaire.');
       console.error('Questionnaire error:', err);
     } finally {
       setLoading(false);
@@ -57,6 +119,7 @@ export default function Home() {
   };
 
   const resetAnalysis = () => {
+    clearPersistedSession();
     setStep('upload');
     setSessionId('');
     setFileName('');

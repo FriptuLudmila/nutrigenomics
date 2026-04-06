@@ -46,6 +46,14 @@ def encrypt_file(input_path: str, output_path: Optional[str] = None) -> str:
     return output_path
 
 
+def decrypt_to_memory(input_path: str) -> bytes:
+    """Decrypt an encrypted file and return the plaintext as bytes without writing to disk."""
+    encryptor = get_encryptor()
+    with open(input_path, 'rb') as f:
+        encrypted_data = f.read()
+    return encryptor.cipher.decrypt(encrypted_data)
+
+
 def decrypt_file(input_path: str, output_path: Optional[str] = None) -> str:
     """
     Decrypt an encrypted file.
@@ -64,17 +72,8 @@ def decrypt_file(input_path: str, output_path: Optional[str] = None) -> str:
         else:
             output_path = f"{input_path}.decrypted"
 
-    # Get encryptor
-    encryptor = get_encryptor()
+    decrypted_data = decrypt_to_memory(input_path)
 
-    # Read encrypted file
-    with open(input_path, 'rb') as f_in:
-        encrypted_data = f_in.read()
-
-    # Decrypt
-    decrypted_data = encryptor.cipher.decrypt(encrypted_data)
-
-    # Write decrypted data
     with open(output_path, 'wb') as f_out:
         f_out.write(decrypted_data)
 
@@ -95,11 +94,7 @@ def encrypt_and_replace(file_path: str, keep_original: bool = False) -> str:
     encrypted_path = encrypt_file(file_path)
 
     if not keep_original:
-        try:
-            os.remove(file_path)
-            print(f"[SECURITY] Original file deleted: {file_path}")
-        except Exception as e:
-            print(f"[WARNING] Failed to delete original file: {e}")
+        secure_delete_file(file_path)
 
     return encrypted_path
 

@@ -32,9 +32,8 @@ export default function HowItWorksPage() {
       </nav>
 
       {/* Hero */}
-      <section className="bg-ng-dark py-24 relative overflow-hidden">
-        <div className="absolute inset-0 opacity-[0.04]" style={{ backgroundImage: 'url(/genes.png)', backgroundRepeat: 'repeat', backgroundSize: 'auto 40%' }} />
-        <div className="container mx-auto px-4 max-w-4xl text-center relative z-10">
+      <section className="bg-[#1e3d30] py-14 relative overflow-hidden">
+        <div className="container mx-auto px-4 max-w-4xl text-center">
           <div className="inline-flex items-center gap-2 px-4 py-2 bg-ng-dark-2 border border-ng-dark-3 rounded-full text-sm font-medium text-ng-lime mb-8">
             <Zap className="w-4 h-4" />
             Simple. Accurate. Personalized.

@@ -31,6 +31,9 @@ class Config:
     # Encryption key (IMPORTANT: Set this in production!)
     ENCRYPTION_KEY = os.environ.get('ENCRYPTION_KEY', None)
     
+    # Allowed CORS origin (frontend URL)
+    CORS_ORIGINS = os.environ.get('FRONTEND_URL', 'http://localhost:3000')
+
     # Debug mode
     DEBUG = os.environ.get('FLASK_DEBUG', 'True').lower() == 'true'
 

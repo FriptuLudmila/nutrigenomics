@@ -2,6 +2,27 @@ import axios from 'axios';
 
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000';
 
+export interface UserProfile {
+  user_id: string;
+  email: string;
+  name: string;
+  age: number;
+  sex: string;
+  email_verified: boolean;
+  created_at: string;
+}
+
+export interface Report {
+  session_id: string;
+  original_filename: string;
+  status: string;
+  created_at: string;
+  has_genetic_results: boolean;
+  has_questionnaire: boolean;
+  has_recommendations: boolean;
+  is_complete: boolean;
+}
+
 export interface FileUploadResponse {
   success: boolean;
   session_id: string;
@@ -158,23 +179,36 @@ const api = axios.create({
   },
 });
 
+api.interceptors.request.use((config) => {
+  if (typeof window !== 'undefined') {
+    const token = localStorage.getItem('auth_token') || sessionStorage.getItem('auth_token');
+    if (token) {
+      config.headers['Authorization'] = `Bearer ${token}`;
+    }
+  }
+  return config;
+});
+
+api.interceptors.response.use(
+  (response) => response,
+  (error) => {
+    if (error.response?.status === 401 && typeof window !== 'undefined') {
+      localStorage.removeItem('auth_token');
+      sessionStorage.removeItem('auth_token');
+      sessionStorage.removeItem('genyo_session');
+      window.location.replace('/landing');
+    }
+    return Promise.reject(error);
+  }
+);
+
 export const nutrigenomicsAPI = {
   uploadFile: async (file: File): Promise<FileUploadResponse> => {
     const formData = new FormData();
     formData.append('file', file);
 
-    // Get JWT token from localStorage if available
-    const token = typeof window !== 'undefined' ? localStorage.getItem('auth_token') : null;
-    const headers: any = {
-      'Content-Type': 'multipart/form-data',
-    };
-
-    if (token) {
-      headers['Authorization'] = `Bearer ${token}`;
-    }
-
     const response = await api.post('/api/upload', formData, {
-      headers,
+      headers: { 'Content-Type': 'multipart/form-data' },
     });
     return response.data;
   },
@@ -207,6 +241,26 @@ export const nutrigenomicsAPI = {
       session_id: sessionId,
       days,
     });
+    return response.data;
+  },
+
+  getMe: async (): Promise<{ success: boolean; user: UserProfile }> => {
+    const response = await api.get('/api/auth/me');
+    return response.data;
+  },
+
+  updateProfile: async (data: { name?: string; age?: number; sex?: string }): Promise<{ success: boolean; user: UserProfile }> => {
+    const response = await api.put('/api/auth/update-profile', data);
+    return response.data;
+  },
+
+  getMyReports: async (): Promise<{ success: boolean; total_reports: number; reports: Report[] }> => {
+    const response = await api.get('/api/auth/my-reports');
+    return response.data;
+  },
+
+  deleteReport: async (sessionId: string): Promise<{ success: boolean; message: string }> => {
+    const response = await api.delete(`/api/session/${sessionId}`);
     return response.data;
   },
 };

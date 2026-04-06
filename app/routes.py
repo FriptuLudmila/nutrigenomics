@@ -1,4 +1,5 @@
 import os
+import tempfile
 from datetime import datetime
 from flask import Blueprint, request, jsonify, current_app
 from werkzeug.utils import secure_filename
@@ -14,10 +15,55 @@ from .models import (
     delete_session_data
 )
 from .encryption import encrypt_genetic_findings, decrypt_genetic_findings
-from .file_encryption import encrypt_and_replace, decrypt_file, cleanup_session_files
+from .file_encryption import encrypt_and_replace, decrypt_to_memory, cleanup_session_files, secure_delete_file
 from .ai_meal_planner import generate_meal_plan, get_fallback_meal_plan
+from .auth import require_auth
+from .limiter import limiter
 
 api_bp = Blueprint('api', __name__)
+
+_BINARY_SIGNATURES = [
+    b'\x7fELF',          # ELF executable
+    b'MZ',               # Windows PE / DOS
+    b'\xca\xfe\xba\xbe', # Mach-O fat binary
+    b'\xfe\xed\xfa\xce', # Mach-O 32-bit
+    b'\xfe\xed\xfa\xcf', # Mach-O 64-bit
+    b'\x89PNG',          # PNG
+    b'\xff\xd8\xff',     # JPEG
+    b'GIF8',             # GIF
+    b'%PDF',             # PDF
+    b'\x1f\x8b',         # gzip
+    b'BZh',              # bzip2
+]
+
+_ZIP_SIGNATURES = [b'PK\x03\x04', b'PK\x05\x06', b'PK\x07\x08']
+
+
+def _validate_file_content(stream, ext):
+    header = stream.read(512)
+    stream.seek(0)
+
+    if not header:
+        return False, 'File is empty'
+
+    if ext == 'zip':
+        if not any(header.startswith(sig) for sig in _ZIP_SIGNATURES):
+            return False, 'File content does not match ZIP format'
+        return True, None
+
+    for sig in _BINARY_SIGNATURES:
+        if header.startswith(sig):
+            return False, 'File appears to contain binary or executable content'
+
+    if b'\x00' in header:
+        return False, 'File contains binary data'
+
+    try:
+        header.decode('utf-8')
+    except UnicodeDecodeError:
+        return False, 'File is not valid UTF-8 text'
+
+    return True, None
 
 
 def allowed_file(filename):
@@ -29,6 +75,8 @@ def allowed_file(filename):
 # ENDPOINT: Upload Genetic File
 # ============================================
 @api_bp.route('/upload', methods=['POST'])
+@limiter.limit("20 per hour")
+@require_auth
 def upload_file():
     if 'file' not in request.files:
         return jsonify({'error': 'No file provided'}), 400
@@ -40,18 +88,12 @@ def upload_file():
     if not allowed_file(file.filename):
         return jsonify({'error': 'Invalid file type', 'allowed': '.txt, .csv, .zip'}), 400
 
-    # Get user_id from JWT token if provided (optional for backwards compatibility)
-    user_id = None
-    auth_header = request.headers.get('Authorization')
-    if auth_header and auth_header.startswith('Bearer '):
-        token = auth_header.split(' ')[1]
-        try:
-            from .auth import verify_token
-            payload = verify_token(token)
-            if payload:
-                user_id = payload.get('user_id')
-        except:
-            pass  # Continue without user_id if token is invalid
+    ext = file.filename.rsplit('.', 1)[1].lower()
+    valid, reason = _validate_file_content(file.stream, ext)
+    if not valid:
+        return jsonify({'error': f'Invalid file: {reason}'}), 400
+
+    user_id = request.user_id
 
     try:
         filename = secure_filename(file.filename)
@@ -59,7 +101,6 @@ def upload_file():
         unique_filename = f"{session.session_id}_{filename}"
         filepath = os.path.join(current_app.config['UPLOAD_FOLDER'], unique_filename)
 
-        # Save file temporarily
         file.save(filepath)
         original_size = os.path.getsize(filepath)
 
@@ -71,9 +112,7 @@ def upload_file():
             print(f"[SECURITY] File encrypted: {encrypted_path}")
         except Exception as e:
             print(f"[ERROR] File encryption failed: {e}")
-            # If encryption fails, delete the unencrypted file
-            if os.path.exists(filepath):
-                os.remove(filepath)
+            secure_delete_file(filepath)
             return jsonify({'error': 'File encryption failed'}), 500
 
         db = get_db()
@@ -96,18 +135,22 @@ def upload_file():
 # ENDPOINT: Analyze Genetic Data
 # ============================================
 @api_bp.route('/analyze', methods=['POST'])
+@limiter.limit("20 per hour")
+@require_auth
 def analyze_genetic_data():
     data = request.get_json()
     if not data or 'session_id' not in data:
         return jsonify({'error': 'Missing session_id'}), 400
-    
+
     session_id = data['session_id']
     db = get_db()
-    
+
     session = get_session(db, session_id)
     if not session:
         return jsonify({'error': 'Invalid session_id'}), 404
-    
+    if session.user_id != request.user_id:
+        return jsonify({'error': 'Forbidden'}), 403
+
     existing_results = get_genetic_results(db, session_id)
     if existing_results:
         decrypted_findings = decrypt_genetic_findings(existing_results.findings_encrypted)
@@ -121,19 +164,24 @@ def analyze_genetic_data():
             }
         }), 200
     
-    # Decrypt file temporarily for analysis
-    decrypted_path = None
+    tmp_path = None
     try:
-        # Check if file is encrypted
         if session.filepath.endswith('.encrypted'):
-            print(f"[SECURITY] Decrypting file for analysis: {session.filepath}")
-            decrypted_path = decrypt_file(session.filepath)
-            analysis_path = decrypted_path
+            raw_bytes = decrypt_to_memory(session.filepath)
+            upload_dir = current_app.config['UPLOAD_FOLDER']
+            fd, tmp_path = tempfile.mkstemp(dir=upload_dir, suffix='.tmp')
+            try:
+                with os.fdopen(fd, 'wb') as f:
+                    f.write(raw_bytes)
+            except Exception:
+                os.close(fd)
+                raise
+            finally:
+                del raw_bytes
+            analysis_path = tmp_path
         else:
-            # Legacy: file not encrypted (backwards compatibility)
             analysis_path = session.filepath
 
-        # Parse the genetic data
         parser = GeneticParser(analysis_path)
         results = parser.export_to_dict()
 
@@ -163,9 +211,6 @@ def analyze_genetic_data():
         session.has_genetic_results = True
         save_session(db, session)
 
-        # Clean up: delete both encrypted and decrypted files after analysis
-        # Data is now safely stored encrypted in the database
-        print(f"[SECURITY] Cleaning up files after analysis")
         cleanup_session_files(session.filepath, secure=True)
 
         return jsonify({
@@ -178,31 +223,29 @@ def analyze_genetic_data():
     except Exception as e:
         return jsonify({'error': 'Analysis failed', 'message': str(e)}), 500
     finally:
-        # Always clean up decrypted file if it was created
-        if decrypted_path and os.path.exists(decrypted_path):
-            try:
-                os.remove(decrypted_path)
-                print(f"[SECURITY] Temporary decrypted file removed: {decrypted_path}")
-            except Exception as e:
-                print(f"[WARNING] Failed to remove temporary file: {e}")
+        if tmp_path:
+            secure_delete_file(tmp_path)
 
 
 # ============================================
 # ENDPOINT: Submit Questionnaire
 # ============================================
 @api_bp.route('/questionnaire', methods=['POST'])
+@require_auth
 def submit_questionnaire():
     data = request.get_json()
     if not data or 'session_id' not in data:
         return jsonify({'error': 'Missing session_id'}), 400
-    
+
     session_id = data['session_id']
     db = get_db()
-    
+
     session = get_session(db, session_id)
     if not session:
         return jsonify({'error': 'Invalid session_id'}), 404
-    
+    if session.user_id != request.user_id:
+        return jsonify({'error': 'Forbidden'}), 403
+
     if 'answers' not in data:
         return jsonify({'error': 'Missing answers'}), 400
     
@@ -223,29 +266,7 @@ def submit_questionnaire():
     }), 200
 
 
-# ============================================
-# ENDPOINT: Get Recommendations
-# ============================================
-@api_bp.route('/recommendations/<session_id>', methods=['GET'])
-def get_recommendations(session_id):
-    db = get_db()
-
-    session = get_session(db, session_id)
-    if not session:
-        return jsonify({'error': 'Invalid session_id'}), 404
-
-    genetic_results = get_genetic_results(db, session_id)
-    if not genetic_results:
-        return jsonify({'error': 'Please call /api/analyze first'}), 400
-
-    decrypted_findings = decrypt_genetic_findings(genetic_results.findings_encrypted)
-
-    questionnaire = get_questionnaire(db, session_id)
-    questionnaire_answers = questionnaire.answers if questionnaire else {}
-
-    recommendations = generate_personalized_recommendations(decrypted_findings, questionnaire_answers)
-
-    # Generate radar chart data from DB findings (file is deleted after analysis)
+def _build_radar_data(decrypted_findings: list) -> dict:
     nutrient_categories = {
         'B Vitamins': ['rs1801133', 'rs1801131', 'rs602662', 'rs1801394'],
         'Vitamin D': ['rs2228570', 'rs7041'],
@@ -266,9 +287,51 @@ def get_recommendations(session_id):
         if cat_findings:
             scores = [risk_scores.get(f.get('risk_level', 'low'), 20) for f in cat_findings]
             radar_chart.append({'category': category, 'score': round(sum(scores) / len(scores), 1), 'findings_count': len(cat_findings)})
-    radar_data = {'radar_chart': radar_chart, 'description': 'Higher scores indicate greater nutritional attention needed for that category'}
+    return {'radar_chart': radar_chart, 'description': 'Higher scores indicate greater nutritional attention needed for that category'}
 
-    recs_model = Recommendations.create(session_id=session_id, recommendations=recommendations)
+
+# ============================================
+# ENDPOINT: Get Recommendations
+# ============================================
+@api_bp.route('/recommendations/<session_id>', methods=['GET'])
+@require_auth
+def get_recommendations(session_id):
+    db = get_db()
+
+    session = get_session(db, session_id)
+    if not session:
+        return jsonify({'error': 'Invalid session_id'}), 404
+    if session.user_id != request.user_id:
+        return jsonify({'error': 'Forbidden'}), 403
+
+    genetic_results = get_genetic_results(db, session_id)
+    if not genetic_results:
+        return jsonify({'error': 'Please call /api/analyze first'}), 400
+
+    cached = get_recs_from_db(db, session_id)
+    if cached:
+        radar_data = cached.radar_data
+        if not radar_data:
+            decrypted_findings = decrypt_genetic_findings(genetic_results.findings_encrypted)
+            radar_data = _build_radar_data(decrypted_findings)
+        return jsonify({
+            'success': True,
+            'session_id': session_id,
+            'generated_at': cached.generated_at.isoformat(),
+            'genetic_summary': genetic_results.summary,
+            'recommendations': cached.recommendations,
+            'nutrient_radar': radar_data,
+            'disclaimer': 'This is for educational purposes only. Consult a healthcare professional.'
+        }), 200
+
+    decrypted_findings = decrypt_genetic_findings(genetic_results.findings_encrypted)
+    questionnaire = get_questionnaire(db, session_id)
+    questionnaire_answers = questionnaire.answers if questionnaire else {}
+
+    recommendations = generate_personalized_recommendations(decrypted_findings, questionnaire_answers)
+    radar_data = _build_radar_data(decrypted_findings)
+
+    recs_model = Recommendations.create(session_id=session_id, recommendations=recommendations, radar_data=radar_data)
     save_recommendations(db, recs_model)
 
     session.status = 'complete'
@@ -278,7 +341,7 @@ def get_recommendations(session_id):
     return jsonify({
         'success': True,
         'session_id': session_id,
-        'generated_at': datetime.utcnow().isoformat(),
+        'generated_at': recs_model.generated_at.isoformat(),
         'genetic_summary': genetic_results.summary,
         'recommendations': recommendations,
         'nutrient_radar': radar_data,
@@ -601,13 +664,16 @@ def get_questionnaire_template():
 # ENDPOINT: Session Status
 # ============================================
 @api_bp.route('/session/<session_id>', methods=['GET'])
+@require_auth
 def get_session_status(session_id):
     db = get_db()
     session = get_session(db, session_id)
-    
+
     if not session:
         return jsonify({'error': 'Session not found'}), 404
-    
+    if session.user_id != request.user_id:
+        return jsonify({'error': 'Forbidden'}), 403
+
     return jsonify({
         'session_id': session.session_id,
         'status': session.status,
@@ -622,27 +688,26 @@ def get_session_status(session_id):
 # ENDPOINT: Generate AI Meal Plan
 # ============================================
 @api_bp.route('/generate-meal-plan', methods=['POST'])
+@limiter.limit("10 per day")
+@require_auth
 def create_meal_plan():
-    """
-    Generate AI-powered personalized meal plan using Gemini API.
-    Requires genetic analysis and questionnaire to be completed.
-    """
     data = request.get_json()
     if not data or 'session_id' not in data:
         return jsonify({'error': 'Missing session_id'}), 400
 
     session_id = data['session_id']
-    days = data.get('days', 3)  # Default to 3-day plan
+    days = data.get('days', 3)
 
     if days < 1 or days > 7:
         return jsonify({'error': 'Days must be between 1 and 7'}), 400
 
     db = get_db()
 
-    # Verify session exists
     session = get_session(db, session_id)
     if not session:
         return jsonify({'error': 'Invalid session_id'}), 404
+    if session.user_id != request.user_id:
+        return jsonify({'error': 'Forbidden'}), 403
 
     # Get genetic results
     genetic_results = get_genetic_results(db, session_id)
@@ -684,12 +749,15 @@ def create_meal_plan():
 # ENDPOINT: Delete Session (GDPR)
 # ============================================
 @api_bp.route('/session/<session_id>', methods=['DELETE'])
+@require_auth
 def delete_session(session_id):
     db = get_db()
     session = get_session(db, session_id)
 
     if not session:
         return jsonify({'error': 'Session not found'}), 404
+    if session.user_id != request.user_id:
+        return jsonify({'error': 'Forbidden'}), 403
 
     # Securely delete all files associated with this session
     try:

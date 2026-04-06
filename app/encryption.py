@@ -27,27 +27,17 @@ class GeneticDataEncryption:
     """
     
     def __init__(self, key: str = None):
-        """
-        Initialize encryptor with key.
-        
-        Args:
-            key: Fernet key as string. If not provided, 
-                 uses ENCRYPTION_KEY env variable or generates new one.
-        """
         if key:
             self.key = key.encode() if isinstance(key, str) else key
         else:
-            # Try to get from environment
             env_key = os.environ.get('ENCRYPTION_KEY')
-            if env_key:
-                self.key = env_key.encode()
-            else:
-                # Generate new key (ONLY for development!)
-                print("[WARNING] No ENCRYPTION_KEY found. Generating temporary key.")
-                print("          Set ENCRYPTION_KEY env variable for production!")
-                self.key = Fernet.generate_key()
-                print(f"          Generated key: {self.key.decode()}")
-        
+            if not env_key:
+                raise RuntimeError(
+                    "ENCRYPTION_KEY environment variable is not set. "
+                    "Generate one with: python app/encryption.py"
+                )
+            self.key = env_key.encode()
+
         self.cipher = Fernet(self.key)
     
     def encrypt_data(self, data: Union[str, Dict, list]) -> str:

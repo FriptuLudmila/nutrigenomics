@@ -32,19 +32,18 @@ export default function PrivacyPage() {
       </nav>
 
       {/* Hero */}
-      <section className="bg-ng-dark py-24 relative overflow-hidden">
-        <div className="absolute inset-0 opacity-[0.04]" style={{ backgroundImage: 'url(/genes.png)', backgroundRepeat: 'repeat', backgroundSize: 'auto 40%' }} />
-        <div className="container mx-auto px-4 max-w-4xl text-center relative z-10">
-          <div className="inline-flex items-center justify-center w-20 h-20 rounded-2xl bg-ng-dark-2 mb-8 border border-ng-dark-3">
-            <Shield className="w-10 h-10 text-ng-lime" />
+      <section className="bg-ng-dark py-14">
+        <div className="container mx-auto px-4 max-w-4xl text-center">
+          <div className="inline-flex items-center justify-center w-16 h-16 rounded-2xl bg-ng-dark-2 mb-6 border border-ng-dark-3">
+            <Shield className="w-8 h-8 text-ng-lime" />
           </div>
-          <h1 className="text-5xl font-bold text-white mb-6">
+          <h1 className="text-4xl font-bold text-white mb-4">
             Privacy <span className="text-ng-lime">Policy</span>
           </h1>
-          <p className="text-lg text-[#A0B8A0] font-medium max-w-2xl mx-auto">
+          <p className="text-base text-[#A0B8A0] font-medium max-w-2xl mx-auto">
             Your genetic data is among the most sensitive personal information that exists. Here is exactly how we handle it — with transparency and respect.
           </p>
-          <p className="mt-4 text-sm text-[#708070] font-medium">Last updated: March 2026</p>
+          <p className="mt-3 text-sm text-[#708070] font-medium">Last updated: March 2026</p>
         </div>
       </section>
 

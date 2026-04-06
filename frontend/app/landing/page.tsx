@@ -20,8 +20,8 @@ export default function LandingPage() {
       <div className="min-h-screen bg-ng-cream">
         {/* Announcement Bar */}
         <div className="bg-ng-dark-2 border-b border-ng-dark-3">
-          <div className="container mx-auto px-4 max-w-7xl">
-            <div className="flex justify-center items-center gap-2 px-5 py-3 bg-ng-dark-3 rounded-md my-2 text-sm font-medium text-white">
+          <div className="container mx-auto px-4 py-3 max-w-7xl">
+            <div className="flex justify-center items-center gap-2 px-5 py-3 bg-ng-dark-3 rounded-md text-sm font-medium text-white">
               <Dna className="w-4 h-4 text-ng-lime flex-shrink-0" />
               <span>Analyze your 23andMe or AncestryDNA data — personalized nutrition for free</span>
             </div>
@@ -52,12 +52,19 @@ export default function LandingPage() {
         </nav>
 
         {/* Hero Section */}
-        <section className="container mx-auto px-4 py-24 max-w-6xl">
-          <div className="text-center relative">
-            <div className="absolute inset-0 -top-12 flex justify-center pointer-events-none">
-              <div className="w-[600px] h-[300px] rounded-full bg-ng-lime opacity-20 blur-3xl" />
-            </div>
-            <div className="relative z-10">
+        <section className="flex items-stretch min-h-[420px]">
+          {/* Left: image placeholder */}
+          <div className="hidden md:block w-[55%] flex-shrink-0 rounded-br-[50px] overflow-hidden">
+            <img
+              src="/Gemini_Generated_Image_h4sio9h4sio9h4si.png"
+              alt="Personalized nutrition"
+              className="w-full h-full object-cover min-h-[420px]"
+            />
+          </div>
+
+          {/* Right: content */}
+          <div className="flex-1 flex items-center px-10 md:px-16 py-12">
+            <div className="max-w-xl">
               <div className="inline-flex items-center gap-2 px-4 py-2 bg-ng-light border border-ng-border rounded-full text-sm font-medium text-ng-text-2 mb-8">
                 <Dna className="w-4 h-4 text-ng-dark" />
                 Precision nutrition powered by your genetics
@@ -67,11 +74,11 @@ export default function LandingPage() {
                 <br />
                 <span className="text-ng-dark">You Should Eat</span>
               </h1>
-              <p className="text-lg text-ng-text-2 mb-10 max-w-2xl mx-auto font-medium">
+              <p className="text-lg text-ng-text-2 mb-10 font-medium">
                 Get personalized nutrition recommendations based on your genetic makeup.
                 Upload your 23andMe or AncestryDNA data and discover the foods that work best for you.
               </p>
-              <div className="flex flex-col sm:flex-row items-center justify-center gap-4">
+              <div className="flex flex-col sm:flex-row items-start gap-4">
                 <button
                   onClick={() => isLoggedIn ? router.push('/app') : setShowAuthModal(true)}
                   className="btn btn-primary text-base px-8 py-4 flex items-center gap-2"
@@ -82,34 +89,11 @@ export default function LandingPage() {
                 {!isLoggedIn && (
                   <button
                     onClick={() => setShowAuthModal(true)}
-                    className="px-8 py-4 text-base font-semibold text-ng-dark hover:text-ng-dark-2 transition-colors flex items-center gap-2"
+                    className="px-8 py-4 text-base font-semibold text-ng-dark bg-ng-light border border-ng-border rounded-lg hover:bg-ng-border transition-colors"
                   >
                     Sign In
                   </button>
                 )}
-              </div>
-            </div>
-          </div>
-
-          {/* Hero visual */}
-          <div className="mt-20 relative">
-            <div className="rounded-2xl border border-ng-border bg-ng-light shadow-lg overflow-hidden" style={{ height: '380px' }}>
-              <div
-                className="absolute inset-0 opacity-[0.06]"
-                style={{
-                  backgroundImage: 'url(/genes.png)',
-                  backgroundRepeat: 'repeat',
-                  backgroundSize: 'auto 50%',
-                  backgroundPosition: 'center'
-                }}
-              />
-              <div className="relative z-10 flex items-center justify-center h-full">
-                <div className="text-center">
-                  <div className="inline-flex items-center justify-center w-24 h-24 rounded-2xl bg-ng-dark mb-5 border-4 border-white shadow-lg">
-                    <Dna className="w-12 h-12 text-ng-lime" />
-                  </div>
-                  <p className="text-ng-muted text-lg font-medium">Personalized Nutrigenomics Report Preview</p>
-                </div>
               </div>
             </div>
           </div>

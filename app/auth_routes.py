@@ -17,6 +17,7 @@ from .auth import (
     send_verification_email, require_auth
 )
 from .models import get_user_sessions
+from .limiter import limiter, get_request_email_key
 
 auth_bp = Blueprint('auth', __name__)
 
@@ -25,6 +26,7 @@ auth_bp = Blueprint('auth', __name__)
 # ENDPOINT: Register (Send Verification Code)
 # ============================================
 @auth_bp.route('/register', methods=['POST'])
+@limiter.limit("5 per hour")
 def register():
     """
     Step 1: Send verification code to email
@@ -111,6 +113,8 @@ def register():
 # ENDPOINT: Verify Email
 # ============================================
 @auth_bp.route('/verify', methods=['POST'])
+@limiter.limit("10 per hour")
+@limiter.limit("10 per hour", key_func=get_request_email_key)
 def verify_email():
     """
     Step 2: Verify email with code
@@ -172,6 +176,7 @@ def verify_email():
 # ENDPOINT: Resend Verification Code
 # ============================================
 @auth_bp.route('/resend-code', methods=['POST'])
+@limiter.limit("3 per hour")
 def resend_verification_code():
     """
     Resend verification code to email
@@ -217,6 +222,8 @@ def resend_verification_code():
 # ENDPOINT: Login
 # ============================================
 @auth_bp.route('/login', methods=['POST'])
+@limiter.limit("10 per minute")
+@limiter.limit("5 per minute", key_func=get_request_email_key)
 def login():
     """
     Login with email and password
@@ -355,6 +362,7 @@ def update_profile():
 # ENDPOINT: Check Account Status (Debug)
 # ============================================
 @auth_bp.route('/check-account', methods=['POST'])
+@limiter.limit("20 per hour")
 def check_account():
     """
     Debug endpoint to check account status
@@ -394,6 +402,7 @@ def check_account():
 # ENDPOINT: Request Password Reset
 # ============================================
 @auth_bp.route('/reset-password-request', methods=['POST'])
+@limiter.limit("5 per hour")
 def reset_password_request():
     """
     Request password reset - sends code to email
@@ -439,6 +448,8 @@ def reset_password_request():
 # ENDPOINT: Reset Password with Code
 # ============================================
 @auth_bp.route('/reset-password-confirm', methods=['POST'])
+@limiter.limit("10 per hour")
+@limiter.limit("10 per hour", key_func=get_request_email_key)
 def reset_password_confirm():
     """
     Reset password using verification code

@@ -3,10 +3,11 @@ Flask Application Factory
 =========================
 Creates and configures the Flask application with MongoDB.
 """
-from flask import Flask
+from flask import Flask, jsonify
 from flask_cors import CORS
 from .config import config
 from .database import init_db
+from .limiter import limiter
 
 
 def create_app(config_name='default'):
@@ -21,18 +22,29 @@ def create_app(config_name='default'):
     """
     app = Flask(__name__)
 
-    # Load configuration
     app.config.from_object(config[config_name])
 
-    # Enable CORS for all origins
-    CORS(app, supports_credentials=True)
+    CORS(
+        app,
+        origins=app.config['CORS_ORIGINS'],
+        supports_credentials=True,
+        allow_headers=['Content-Type', 'Authorization'],
+        methods=['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
+    )
 
-    # Initialize database connection
+    limiter.init_app(app)
+
+    @app.errorhandler(429)
+    def ratelimit_handler(e):
+        return jsonify({'error': 'Too many requests. Please slow down and try again later.'}), 429
+
+    from .encryption import get_encryptor
+    get_encryptor()
+
     with app.app_context():
         if not init_db(app):
             print("[WARNING] Database not connected. Some features may not work.")
 
-    # Register blueprints (routes)
     from .routes import api_bp
     from .auth_routes import auth_bp
     app.register_blueprint(api_bp, url_prefix='/api')

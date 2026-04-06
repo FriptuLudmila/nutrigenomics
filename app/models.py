@@ -153,23 +153,26 @@ class Recommendations:
     session_id: str
     recommendations: Dict[str, Any]
     generated_at: datetime
-    
+    radar_data: Optional[Dict[str, Any]] = None
+
     @classmethod
-    def create(cls, session_id: str, recommendations: Dict):
+    def create(cls, session_id: str, recommendations: Dict, radar_data: Optional[Dict] = None):
         """Create recommendations entry"""
         return cls(
             session_id=session_id,
             recommendations=recommendations,
-            generated_at=datetime.utcnow()
+            generated_at=datetime.utcnow(),
+            radar_data=radar_data,
         )
-    
+
     def to_dict(self) -> Dict:
         """Convert to dictionary for MongoDB"""
         return asdict(self)
-    
+
     @classmethod
     def from_dict(cls, data: Dict):
         """Create from MongoDB document"""
+        data.setdefault('radar_data', None)
         return cls(**data)
 
 

@@ -2,9 +2,18 @@
 
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
-import { User, Mail, Calendar, Users, ArrowLeft, Save, FileText, CheckCircle, Clock, Dna } from 'lucide-react';
+import { nutrigenomicsAPI, type UserProfile, type Report } from '@/lib/api';
+import { User, Mail, Calendar, Users, ArrowLeft, Save, FileText, CheckCircle, Clock, Dna, Trash2 } from 'lucide-react';
 
-const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000';
+const SESSION_KEY = 'genyo_session';
+
+type Step = 'upload' | 'analyzing' | 'questionnaire' | 'recommendations';
+
+function getStepFromReport(report: Report): Step {
+  if (report.has_recommendations || report.has_questionnaire) return 'recommendations';
+  if (report.has_genetic_results) return 'questionnaire';
+  return 'upload';
+}
 
 export default function ProfilePage() {
   const router = useRouter();
@@ -13,60 +22,54 @@ export default function ProfilePage() {
   const [error, setError] = useState('');
   const [successMessage, setSuccessMessage] = useState('');
   const [isEditing, setIsEditing] = useState(false);
-  const [reports, setReports] = useState<any[]>([]);
+  const [reports, setReports] = useState<Report[]>([]);
   const [reportsLoading, setReportsLoading] = useState(false);
+  const [deletingId, setDeletingId] = useState<string | null>(null);
+  const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
 
-  const [profile, setProfile] = useState({
+  const [profile, setProfile] = useState<UserProfile>({
     user_id: '',
     email: '',
     name: '',
     age: 0,
     sex: 'other',
     email_verified: false,
-    created_at: ''
+    created_at: '',
   });
 
-  const [editForm, setEditForm] = useState({
-    name: '',
-    age: '',
-    sex: 'other'
-  });
+  const [editForm, setEditForm] = useState({ name: '', age: '', sex: 'other' });
 
   useEffect(() => {
-    loadProfile();
-    loadReports();
-  }, []);
-
-  const loadProfile = async () => {
     const token = localStorage.getItem('auth_token') || sessionStorage.getItem('auth_token');
-
     if (!token) {
-      router.push('/landing');
+      router.replace('/landing');
       return;
     }
+    loadProfile();
+    loadReports();
+  }, [router]);
 
+  const loadProfile = async () => {
     try {
-      const response = await fetch(`${API_BASE_URL}/api/auth/me`, {
-        headers: { 'Authorization': `Bearer ${token}` }
-      });
-
-      const data = await response.json();
-
-      if (response.status === 401) {
-        localStorage.clear();
-        sessionStorage.clear();
-        router.push('/landing');
-        return;
-      }
-
-      if (!response.ok) throw new Error(data.error || 'Failed to load profile');
-
+      const data = await nutrigenomicsAPI.getMe();
       setProfile(data.user);
       setEditForm({ name: data.user.name, age: data.user.age.toString(), sex: data.user.sex });
     } catch (err: any) {
-      setError(err.message || 'Failed to load profile');
+      setError(err.response?.data?.error || 'Failed to load profile');
     } finally {
       setLoading(false);
+    }
+  };
+
+  const loadReports = async () => {
+    setReportsLoading(true);
+    try {
+      const data = await nutrigenomicsAPI.getMyReports();
+      setReports(data.reports || []);
+    } catch {
+      // non-critical — silently ignore, reports section shows empty state
+    } finally {
+      setReportsLoading(false);
     }
   };
 
@@ -74,35 +77,17 @@ export default function ProfilePage() {
     setSaving(true);
     setError('');
     setSuccessMessage('');
-
-    const token = localStorage.getItem('auth_token') || sessionStorage.getItem('auth_token');
-
     try {
-      const response = await fetch(`${API_BASE_URL}/api/auth/update-profile`, {
-        method: 'PUT',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${token}`
-        },
-        body: JSON.stringify({ name: editForm.name, age: parseInt(editForm.age), sex: editForm.sex })
+      const data = await nutrigenomicsAPI.updateProfile({
+        name: editForm.name,
+        age: parseInt(editForm.age),
+        sex: editForm.sex,
       });
-
-      const data = await response.json();
-
-      if (response.status === 401) {
-        localStorage.clear();
-        sessionStorage.clear();
-        router.push('/landing');
-        return;
-      }
-
-      if (!response.ok) throw new Error(data.error || 'Failed to update profile');
-
       setProfile(data.user);
       setSuccessMessage('Profile updated successfully!');
       setIsEditing(false);
     } catch (err: any) {
-      setError(err.message || 'Failed to update profile');
+      setError(err.response?.data?.error || 'Failed to update profile');
     } finally {
       setSaving(false);
     }
@@ -115,28 +100,25 @@ export default function ProfilePage() {
     setSuccessMessage('');
   };
 
-  const loadReports = async () => {
-    setReportsLoading(true);
-    const token = localStorage.getItem('auth_token') || sessionStorage.getItem('auth_token');
-
-    if (!token) return;
-
+  const handleDeleteReport = async (sessionId: string) => {
+    setDeletingId(sessionId);
     try {
-      const response = await fetch(`${API_BASE_URL}/api/auth/my-reports`, {
-        headers: { 'Authorization': `Bearer ${token}` }
-      });
-
-      const data = await response.json();
-      if (response.ok) setReports(data.reports || []);
-    } catch (err) {
-      console.error('Failed to load reports:', err);
+      await nutrigenomicsAPI.deleteReport(sessionId);
+      setReports((prev) => prev.filter((r) => r.session_id !== sessionId));
+    } catch {
+      setError('Failed to delete report. Please try again.');
     } finally {
-      setReportsLoading(false);
+      setDeletingId(null);
+      setConfirmDeleteId(null);
     }
   };
 
-  const handleViewReport = (sessionId: string) => {
-    localStorage.setItem('session_id', sessionId);
+  const handleViewReport = (report: Report) => {
+    sessionStorage.setItem(SESSION_KEY, JSON.stringify({
+      sessionId: report.session_id,
+      step: getStepFromReport(report),
+      fileName: report.original_filename,
+    }));
     router.push('/app');
   };
 
@@ -159,19 +141,16 @@ export default function ProfilePage() {
 
   return (
     <div className="min-h-screen bg-ng-cream">
-      {/* Header */}
       <header className="bg-ng-dark border-b border-ng-dark-2">
         <div className="container mx-auto px-4 py-5 max-w-7xl">
           <div className="flex justify-between items-center">
-            <div className="flex items-center gap-4">
-              <button
-                onClick={() => router.push('/app')}
-                className="flex items-center gap-2 text-ng-cream hover:text-ng-lime transition-colors font-semibold"
-              >
-                <ArrowLeft className="w-5 h-5" />
-                <span>Back to Analysis</span>
-              </button>
-            </div>
+            <button
+              onClick={() => router.push('/app')}
+              className="flex items-center gap-2 text-ng-cream hover:text-ng-lime transition-colors font-semibold"
+            >
+              <ArrowLeft className="w-5 h-5" />
+              <span>Back to Analysis</span>
+            </button>
             <button onClick={() => router.push('/landing')} className="flex items-center gap-2 hover:opacity-80 transition-opacity">
               <Dna className="w-6 h-6 text-ng-lime" />
               <span className="font-bold text-white">GenyO</span>
@@ -186,7 +165,6 @@ export default function ProfilePage() {
         </div>
       </header>
 
-      {/* Profile Content */}
       <div className="container mx-auto px-4 py-12 max-w-2xl">
 
         {/* Profile Card */}
@@ -259,10 +237,10 @@ export default function ProfilePage() {
           ) : (
             <div className="space-y-5">
               {[
-                { Icon: User,     label: 'Name',   value: profile.name },
-                { Icon: Mail,     label: 'Email',  value: profile.email, badge: profile.email_verified ? 'Verified' : null },
-                { Icon: Calendar, label: 'Age',    value: `${profile.age} years old` },
-                { Icon: Users,    label: 'Sex',    value: profile.sex, capitalize: true },
+                { Icon: User,     label: 'Name',  value: profile.name },
+                { Icon: Mail,     label: 'Email', value: profile.email, badge: profile.email_verified ? 'Verified' : null },
+                { Icon: Calendar, label: 'Age',   value: `${profile.age} years old` },
+                { Icon: Users,    label: 'Sex',   value: profile.sex, capitalize: true },
               ].map(({ Icon, label, value, badge, capitalize }) => (
                 <div key={label} className="flex items-start gap-4 p-4 bg-white rounded-xl border border-ng-border">
                   <div className="w-9 h-9 rounded-lg bg-ng-lime flex items-center justify-center flex-shrink-0">
@@ -318,13 +296,15 @@ export default function ProfilePage() {
                 <div
                   key={report.session_id}
                   className="bg-white border border-ng-border rounded-xl p-5 hover:border-ng-lime hover:shadow-sm transition-all cursor-pointer"
-                  onClick={() => handleViewReport(report.session_id)}
+                  onClick={() => handleViewReport(report)}
                 >
                   <div className="flex items-start justify-between gap-3 min-w-0">
                     <div className="flex-1 min-w-0">
                       <div className="flex items-center gap-2 mb-2 min-w-0">
                         <FileText className="w-5 h-5 text-ng-dark flex-shrink-0" />
-                        <h3 className="font-semibold text-ng-text truncate" title={report.original_filename}>{report.original_filename}</h3>
+                        <h3 className="font-semibold text-ng-text truncate" title={report.original_filename}>
+                          {report.original_filename}
+                        </h3>
                         {report.is_complete
                           ? <CheckCircle className="w-4 h-4 text-ng-lime" />
                           : <Clock className="w-4 h-4 text-orange-400" />
@@ -337,9 +317,9 @@ export default function ProfilePage() {
                             ? 'bg-ng-light text-ng-dark border border-ng-border'
                             : 'bg-orange-50 text-orange-700 border border-orange-200'
                         }`}>
-                          {report.status === 'complete' ? 'Complete' :
-                           report.status === 'questionnaire_completed' ? 'Questionnaire Done' :
-                           report.status === 'analyzed' ? 'Analyzed' : 'Uploaded'}
+                          {report.status === 'complete'                  ? 'Complete' :
+                           report.status === 'questionnaire_completed'   ? 'Questionnaire Done' :
+                           report.status === 'analyzed'                  ? 'Analyzed' : 'Uploaded'}
                         </span>
                         {report.has_genetic_results && (
                           <span className="text-xs px-2 py-1 bg-ng-light text-ng-dark border border-ng-border rounded-full font-semibold">
@@ -354,19 +334,46 @@ export default function ProfilePage() {
                       </div>
 
                       <p className="text-sm text-ng-muted font-medium">
-                        Created {new Date(report.created_at).toLocaleDateString('en-US', {
+                        {new Date(report.created_at).toLocaleDateString('en-US', {
                           year: 'numeric', month: 'short', day: 'numeric',
-                          hour: '2-digit', minute: '2-digit'
+                          hour: '2-digit', minute: '2-digit',
                         })}
                       </p>
                     </div>
 
-                    <button
-                      onClick={(e) => { e.stopPropagation(); handleViewReport(report.session_id); }}
-                      className="px-4 py-2 text-sm font-semibold text-ng-dark hover:text-ng-dark-2 hover:bg-ng-light rounded-lg transition-colors border border-ng-border ml-3"
-                    >
-                      View
-                    </button>
+                    <div className="flex items-center gap-2 ml-3 flex-shrink-0">
+                      <button
+                        onClick={(e) => { e.stopPropagation(); handleViewReport(report); }}
+                        className="px-4 py-2 text-sm font-semibold text-ng-dark hover:text-ng-dark-2 hover:bg-ng-light rounded-lg transition-colors border border-ng-border"
+                      >
+                        View
+                      </button>
+                      {confirmDeleteId === report.session_id ? (
+                        <>
+                          <button
+                            onClick={(e) => { e.stopPropagation(); handleDeleteReport(report.session_id); }}
+                            disabled={deletingId === report.session_id}
+                            className="px-3 py-2 text-sm font-semibold text-white bg-red-500 hover:bg-red-600 rounded-lg transition-colors disabled:opacity-50"
+                          >
+                            {deletingId === report.session_id ? 'Deleting...' : 'Confirm'}
+                          </button>
+                          <button
+                            onClick={(e) => { e.stopPropagation(); setConfirmDeleteId(null); }}
+                            className="px-3 py-2 text-sm font-semibold text-ng-text-2 hover:bg-ng-light rounded-lg transition-colors border border-ng-border"
+                          >
+                            Cancel
+                          </button>
+                        </>
+                      ) : (
+                        <button
+                          onClick={(e) => { e.stopPropagation(); setConfirmDeleteId(report.session_id); }}
+                          className="p-2 text-ng-muted hover:text-red-500 hover:bg-red-50 rounded-lg transition-colors border border-ng-border"
+                          title="Delete report"
+                        >
+                          <Trash2 className="w-4 h-4" />
+                        </button>
+                      )}
+                    </div>
                   </div>
                 </div>
               ))}

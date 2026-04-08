@@ -39,7 +39,6 @@ def create_app(config_name='default'):
         strict_transport_security=not app.config['DEBUG'],
         content_security_policy=False,         # API serves JSON, not HTML — CSP not applicable
         x_content_type_options=True,           # X-Content-Type-Options: nosniff
-        x_frame_options='DENY',                # X-Frame-Options: DENY
         referrer_policy='strict-origin-when-cross-origin',
     )
 

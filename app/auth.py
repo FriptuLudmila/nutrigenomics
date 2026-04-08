@@ -7,8 +7,7 @@ User registration, login, and JWT token management.
 import os
 import jwt
 import bcrypt
-import random
-import string
+import secrets
 from datetime import datetime, timedelta
 from typing import Optional, Dict
 from dataclasses import dataclass, asdict
@@ -191,8 +190,8 @@ def get_user_by_id(db, user_id: str) -> Optional[User]:
 # ============================================
 
 def generate_verification_code() -> str:
-    """Generate a 6-digit verification code"""
-    return ''.join(random.choices(string.digits, k=6))
+    """Generate a cryptographically secure 6-digit verification code"""
+    return str(secrets.randbelow(1000000)).zfill(6)
 
 
 def save_verification_code(db, email: str, code: str) -> bool:
@@ -318,4 +317,152 @@ The NutriGenome Team
     except Exception as e:
         print(f"[ERROR] Failed to send verification email: {e}")
         print(f"[DEBUG] Verification code for {email}: {code}")
+        return False
+
+
+# ============================================
+# Password Reset Token Functions
+# ============================================
+
+def generate_reset_token() -> str:
+    """Generate a cryptographically secure reset token"""
+    return secrets.token_urlsafe(32)
+
+
+def save_reset_token(db, email: str, token: str) -> bool:
+    """Save password reset token to database (expires in 30 minutes)"""
+    try:
+        db.reset_tokens.update_one(
+            {'email': email},
+            {'$set': {
+                'email': email,
+                'token': token,
+                'created_at': datetime.utcnow(),
+                'expires_at': datetime.utcnow() + timedelta(minutes=30)
+            }},
+            upsert=True
+        )
+        return True
+    except Exception as e:
+        print(f"[ERROR] Failed to save reset token: {e}")
+        return False
+
+
+def get_reset_token(db, token: str):
+    """Get reset token record by token value"""
+    try:
+        doc = db.reset_tokens.find_one({'token': token})
+        if not doc:
+            return None
+        expires_at = doc.get('expires_at')
+        if isinstance(expires_at, str):
+            expires_at = datetime.fromisoformat(expires_at)
+        if datetime.utcnow() > expires_at:
+            db.reset_tokens.delete_one({'token': token})
+            return None
+        return doc
+    except Exception as e:
+        print(f"[ERROR] Failed to get reset token: {e}")
+        return None
+
+
+def delete_reset_token(db, token: str) -> bool:
+    """Delete a reset token after use"""
+    try:
+        db.reset_tokens.delete_one({'token': token})
+        return True
+    except Exception as e:
+        print(f"[ERROR] Failed to delete reset token: {e}")
+        return False
+
+
+def send_reset_password_email(email: str, name: str, token: str) -> bool:
+    """Send password reset link via email"""
+    try:
+        smtp_server = os.getenv('SMTP_SERVER', 'smtp.gmail.com')
+        smtp_port = int(os.getenv('SMTP_PORT', '587'))
+        sender_email = os.getenv('SMTP_EMAIL')
+        sender_password = os.getenv('SMTP_PASSWORD')
+        frontend_url = os.getenv('FRONTEND_URL', 'http://localhost:3000')
+
+        if not sender_email or not sender_password:
+            print(f"[WARNING] SMTP not configured. Reset link: {frontend_url}/reset-password?token={token}")
+            return False
+
+        reset_link = f"{frontend_url}/reset-password?token={token}"
+
+        message = MIMEMultipart('alternative')
+        message['Subject'] = 'Reset Your GenyO Password'
+        message['From'] = f"GenyO <{sender_email}>"
+        message['To'] = email
+
+        text = f"""
+Hello {name},
+
+You requested a password reset for your GenyO account.
+
+Click the link below to reset your password:
+{reset_link}
+
+This link will expire in 30 minutes.
+
+If you did not request a password reset, please ignore this email — your password will remain unchanged.
+
+Best regards,
+The GenyO Team
+        """
+
+        html = f"""
+<html>
+  <body style="font-family: Arial, sans-serif; line-height: 1.6; color: #333; background: #f9f9f9;">
+    <div style="max-width: 600px; margin: 0 auto; padding: 40px 20px;">
+      <div style="background: #1A3129; padding: 24px; border-radius: 12px 12px 0 0; text-align: center;">
+        <h1 style="color: #CBEA7B; margin: 0; font-size: 24px;">GenyO</h1>
+      </div>
+      <div style="background: #ffffff; padding: 40px; border-radius: 0 0 12px 12px; border: 1px solid #e5e7eb;">
+        <h2 style="color: #1A3129; margin-top: 0;">Reset Your Password</h2>
+        <p>Hello {name},</p>
+        <p>You requested a password reset for your GenyO account. Click the button below to set a new password:</p>
+
+        <div style="text-align: center; margin: 32px 0;">
+          <a href="{reset_link}"
+             style="background-color: #CBEA7B; color: #1A3129; padding: 14px 32px; border-radius: 8px;
+                    text-decoration: none; font-weight: 700; font-size: 16px; display: inline-block;">
+            Reset My Password
+          </a>
+        </div>
+
+        <p style="color: #6b7280; font-size: 14px;">
+          This link will expire in <strong>30 minutes</strong>. If you did not request a reset, you can safely ignore this email.
+        </p>
+
+        <p style="color: #6b7280; font-size: 12px; margin-top: 32px; word-break: break-all;">
+          Or copy this link: {reset_link}
+        </p>
+
+        <hr style="border: none; border-top: 1px solid #e5e7eb; margin: 30px 0;">
+        <p style="color: #9ca3af; font-size: 12px; text-align: center; margin: 0;">
+          © 2026 GenyO · Your genetic data is never shared
+        </p>
+      </div>
+    </div>
+  </body>
+</html>
+        """
+
+        part1 = MIMEText(text, 'plain')
+        part2 = MIMEText(html, 'html')
+        message.attach(part1)
+        message.attach(part2)
+
+        with smtplib.SMTP(smtp_server, smtp_port) as server:
+            server.starttls()
+            server.login(sender_email, sender_password)
+            server.sendmail(sender_email, email, message.as_string())
+
+        print(f"[OK] Password reset email sent to {email}")
+        return True
+
+    except Exception as e:
+        print(f"[ERROR] Failed to send reset email: {e}")
         return False

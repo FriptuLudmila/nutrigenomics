@@ -104,6 +104,12 @@ class Database:
         # Verification codes - TTL index to auto-delete expired codes
         self.db.verification_codes.create_index("expires_at", expireAfterSeconds=0)
 
+        # Reset tokens - index on token (unique lookup)
+        self.db.reset_tokens.create_index("token", unique=True)
+
+        # Reset tokens - TTL index to auto-delete expired tokens
+        self.db.reset_tokens.create_index("expires_at", expireAfterSeconds=0)
+
         print("    Database indexes created")
     
     def disconnect(self):
@@ -148,6 +154,11 @@ class Database:
     def verification_codes(self):
         """Verification codes collection"""
         return self.db.verification_codes if self.db is not None else None
+
+    @property
+    def reset_tokens(self):
+        """Password reset tokens collection"""
+        return self.db.reset_tokens if self.db is not None else None
 
 
 # Global database instance

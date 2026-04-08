@@ -11,7 +11,7 @@ interface AuthModalProps {
   onClose: () => void;
 }
 
-type AuthMode = 'signin' | 'signup' | 'verify';
+type AuthMode = 'signin' | 'signup' | 'verify' | 'forgot';
 
 export default function AuthModal({ isOpen, onClose }: AuthModalProps) {
   const router = useRouter();
@@ -40,7 +40,17 @@ export default function AuthModal({ isOpen, onClose }: AuthModalProps) {
     setSuccessMessage('');
 
     try {
-      if (mode === 'signin') {
+      if (mode === 'forgot') {
+        const response = await fetch(`${API_BASE_URL}/api/auth/reset-password-request`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ email: formData.email }),
+        });
+        const data = await response.json();
+        if (!response.ok) throw new Error(data.error || 'Failed to send reset email');
+        setSuccessMessage('If an account exists with this email, a reset link has been sent. Check your inbox.');
+        return;
+      } else if (mode === 'signin') {
         const response = await fetch(`${API_BASE_URL}/api/auth/login`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
@@ -72,10 +82,7 @@ export default function AuthModal({ isOpen, onClose }: AuthModalProps) {
         const data = await response.json();
         if (!response.ok) throw new Error(data.error || 'Registration failed');
 
-        setSuccessMessage(data.debug_code
-          ? `Development mode — your code: ${data.debug_code}`
-          : `Verification code sent to ${formData.email}`
-        );
+        setSuccessMessage(`Verification code sent to ${formData.email}`);
         setMode('verify');
       } else if (mode === 'verify') {
         const response = await fetch(`${API_BASE_URL}/api/auth/verify`, {
@@ -87,9 +94,10 @@ export default function AuthModal({ isOpen, onClose }: AuthModalProps) {
         const data = await response.json();
         if (!response.ok) throw new Error(data.error || 'Verification failed');
 
-        localStorage.setItem('auth_token', data.token);
-        localStorage.setItem('user_email', data.user.email);
-        localStorage.setItem('user_name', data.user.name);
+        const storage = rememberMe ? localStorage : sessionStorage;
+        storage.setItem('auth_token', data.token);
+        storage.setItem('user_email', data.user.email);
+        storage.setItem('user_name', data.user.name);
 
         router.push('/app');
       }
@@ -116,10 +124,7 @@ export default function AuthModal({ isOpen, onClose }: AuthModalProps) {
       const data = await response.json();
       if (!response.ok) throw new Error(data.error || 'Failed to resend code');
 
-      setSuccessMessage(data.debug_code
-        ? `Development mode — your code: ${data.debug_code}`
-        : 'Verification code resent!'
-      );
+      setSuccessMessage('Verification code resent!');
     } catch (err: unknown) {
       const error = err as { message?: string };
       setError(error.message || 'Failed to resend code');
@@ -166,11 +171,13 @@ export default function AuthModal({ isOpen, onClose }: AuthModalProps) {
             {mode === 'signin' && 'Welcome Back'}
             {mode === 'signup' && 'Create Account'}
             {mode === 'verify' && 'Verify Email'}
+            {mode === 'forgot' && 'Reset Password'}
           </h2>
           <p className="text-ng-muted font-medium mb-6">
             {mode === 'signin' && 'Sign in to access your personalized nutrition insights'}
             {mode === 'signup' && 'Start your personalized nutrition journey'}
             {mode === 'verify' && 'Enter the verification code sent to your email'}
+            {mode === 'forgot' && "Enter your email and we'll send you a reset link"}
           </p>
 
           {error && (
@@ -185,7 +192,16 @@ export default function AuthModal({ isOpen, onClose }: AuthModalProps) {
           )}
 
           <form onSubmit={handleSubmit} className="space-y-4">
-            {mode === 'verify' ? (
+            {mode === 'forgot' ? (
+              <div>
+                <label htmlFor="email" className="block text-sm font-semibold text-ng-text-2 mb-1.5">Email</label>
+                <input
+                  type="email" id="email" name="email"
+                  value={formData.email} onChange={handleChange}
+                  required className="input-field" placeholder="you@example.com"
+                />
+              </div>
+            ) : mode === 'verify' ? (
               <>
                 <div>
                   <label htmlFor="verificationCode" className="block text-sm font-semibold text-ng-text-2 mb-1.5">
@@ -284,6 +300,18 @@ export default function AuthModal({ isOpen, onClose }: AuthModalProps) {
             )}
 
             {mode === 'signin' && (
+              <div className="flex justify-end">
+                <button
+                  type="button"
+                  onClick={() => switchMode('forgot')}
+                  className="text-sm text-ng-dark font-semibold hover:text-ng-dark-2 transition-colors"
+                >
+                  Forgot password?
+                </button>
+              </div>
+            )}
+
+            {mode === 'signin' && (
               <label className="flex items-center gap-2 cursor-pointer select-none">
                 <input
                   type="checkbox"
@@ -296,11 +324,15 @@ export default function AuthModal({ isOpen, onClose }: AuthModalProps) {
             )}
 
             <button type="submit" disabled={loading} className="w-full btn btn-primary py-3 mt-2">
-              {loading ? 'Loading...' : mode === 'signin' ? 'Sign In' : mode === 'signup' ? 'Create Account' : 'Verify'}
+              {loading ? 'Loading...' :
+                mode === 'signin' ? 'Sign In' :
+                mode === 'signup' ? 'Create Account' :
+                mode === 'forgot' ? 'Send Reset Link' :
+                'Verify'}
             </button>
           </form>
 
-          {mode !== 'verify' && (
+          {(mode === 'signin' || mode === 'signup') && (
             <div className="mt-5 text-center">
               <button
                 onClick={() => switchMode(mode === 'signin' ? 'signup' : 'signin')}
@@ -311,13 +343,13 @@ export default function AuthModal({ isOpen, onClose }: AuthModalProps) {
             </div>
           )}
 
-          {mode === 'verify' && (
+          {(mode === 'verify' || mode === 'forgot') && (
             <div className="mt-5 text-center">
               <button
-                onClick={() => switchMode('signup')}
+                onClick={() => switchMode('signin')}
                 className="text-sm text-ng-muted hover:text-ng-text font-medium transition-colors"
               >
-                Back to sign up
+                Back to sign in
               </button>
             </div>
           )}

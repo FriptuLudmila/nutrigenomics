@@ -5,6 +5,7 @@ Creates and configures the Flask application with MongoDB.
 """
 from flask import Flask, jsonify
 from flask_cors import CORS
+from flask_talisman import Talisman
 from .config import config
 from .database import init_db
 from .limiter import limiter
@@ -30,6 +31,16 @@ def create_app(config_name='default'):
         supports_credentials=True,
         allow_headers=['Content-Type', 'Authorization'],
         methods=['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
+    )
+
+    Talisman(
+        app,
+        force_https=not app.config['DEBUG'],   # only enforce HTTPS in production
+        strict_transport_security=not app.config['DEBUG'],
+        content_security_policy=False,         # API serves JSON, not HTML — CSP not applicable
+        x_content_type_options=True,           # X-Content-Type-Options: nosniff
+        x_frame_options='DENY',                # X-Frame-Options: DENY
+        referrer_policy='strict-origin-when-cross-origin',
     )
 
     limiter.init_app(app)

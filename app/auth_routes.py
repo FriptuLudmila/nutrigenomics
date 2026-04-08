@@ -14,7 +14,9 @@ from .auth import (
     save_user, get_user_by_email,
     generate_verification_code, save_verification_code,
     get_verification_code, delete_verification_code,
-    send_verification_email, require_auth
+    send_verification_email, require_auth,
+    generate_reset_token, save_reset_token, get_reset_token,
+    delete_reset_token, send_reset_password_email
 )
 from .models import get_user_sessions
 from .limiter import limiter, get_request_email_key
@@ -100,12 +102,13 @@ def register():
     if not save_user(db, user):
         return jsonify({'error': 'Failed to create user'}), 500
 
+    if not email_sent:
+        print(f"[DEBUG] Verification code for {email}: {code}")
+
     return jsonify({
         'success': True,
         'message': 'Verification code sent to your email',
         'email': email,
-        'email_sent': email_sent,
-        'debug_code': code if not email_sent else None  # Only show if email failed
     }), 200
 
 
@@ -210,11 +213,12 @@ def resend_verification_code():
     # Send email
     email_sent = send_verification_email(email, code, user.name)
 
+    if not email_sent:
+        print(f"[DEBUG] Verification code for {email}: {code}")
+
     return jsonify({
         'success': True,
         'message': 'Verification code sent',
-        'email_sent': email_sent,
-        'debug_code': code if not email_sent else None
     }), 200
 
 
@@ -405,7 +409,7 @@ def check_account():
 @limiter.limit("5 per hour")
 def reset_password_request():
     """
-    Request password reset - sends code to email
+    Request password reset - sends a secure link to email
 
     Request body:
     {
@@ -422,54 +426,46 @@ def reset_password_request():
 
     user = get_user_by_email(db, email)
     if not user:
-        # Don't reveal if email exists or not
+        # Don't reveal whether email exists
         return jsonify({
             'success': True,
-            'message': 'If an account exists with this email, a reset code has been sent'
+            'message': 'If an account exists with this email, a reset link has been sent'
         }), 200
 
-    # Generate reset code
-    code = generate_verification_code()
-    if not save_verification_code(db, email, code):
-        return jsonify({'error': 'Failed to generate reset code'}), 500
+    token = generate_reset_token()
+    if not save_reset_token(db, email, token):
+        return jsonify({'error': 'Failed to generate reset token'}), 500
 
-    # Send reset email
-    email_sent = send_verification_email(email, code, user.name)
+    email_sent = send_reset_password_email(email, user.name, token)
 
     return jsonify({
         'success': True,
-        'message': 'Reset code sent to your email',
-        'email_sent': email_sent,
-        'debug_code': code if not email_sent else None
+        'message': 'If an account exists with this email, a reset link has been sent',
+        'email_sent': email_sent
     }), 200
 
 
 # ============================================
-# ENDPOINT: Reset Password with Code
+# ENDPOINT: Reset Password with Token
 # ============================================
 @auth_bp.route('/reset-password-confirm', methods=['POST'])
 @limiter.limit("10 per hour")
-@limiter.limit("10 per hour", key_func=get_request_email_key)
 def reset_password_confirm():
     """
-    Reset password using verification code
+    Reset password using the secure token from the email link
 
     Request body:
     {
-        "email": "john@example.com",
-        "code": "123456",
+        "token": "<token from email link>",
         "new_password": "newsecurepassword"
     }
     """
     data = request.get_json()
 
-    required_fields = ['email', 'code', 'new_password']
-    for field in required_fields:
-        if field not in data:
-            return jsonify({'error': f'Missing required field: {field}'}), 400
+    if 'token' not in data or 'new_password' not in data:
+        return jsonify({'error': 'Token and new_password are required'}), 400
 
-    email = data['email'].lower().strip()
-    code = data['code'].strip()
+    token = data['token'].strip()
     new_password = data['new_password']
 
     if len(new_password) < 6:
@@ -477,31 +473,19 @@ def reset_password_confirm():
 
     db = get_db()
 
-    # Verify code
-    verification = get_verification_code(db, email)
-    if not verification:
-        return jsonify({'error': 'No reset code found. Please request a new one.'}), 404
+    token_doc = get_reset_token(db, token)
+    if not token_doc:
+        return jsonify({'error': 'Invalid or expired reset link. Please request a new one.'}), 400
 
-    if verification.is_expired():
-        delete_verification_code(db, email)
-        return jsonify({'error': 'Reset code expired. Please request a new one.'}), 400
-
-    if verification.code != code:
-        return jsonify({'error': 'Invalid reset code'}), 400
-
-    # Get user
-    user = get_user_by_email(db, email)
+    user = get_user_by_email(db, token_doc['email'])
     if not user:
         return jsonify({'error': 'User not found'}), 404
 
-    # Update password
     user.password_hash = hash_password(new_password)
-
     if not save_user(db, user):
         return jsonify({'error': 'Failed to reset password'}), 500
 
-    # Delete verification code
-    delete_verification_code(db, email)
+    delete_reset_token(db, token)
 
     return jsonify({
         'success': True,

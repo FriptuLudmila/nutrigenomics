@@ -97,7 +97,7 @@ pipeline {
                             -e FRONTEND_URL=https://${FRONTEND_DOMAIN} \
                             -v nutrigenomics-uploads:/app/uploads \
                             --label traefik.enable=true \
-                            --label "traefik.http.routers.nutrigenomics-api.rule=Host(\`${API_DOMAIN}\`)" \
+                            --label "traefik.http.routers.nutrigenomics-api.rule=Host(\\`${API_DOMAIN}\\`)" \
                             --label "traefik.http.routers.nutrigenomics-api.entrypoints=${TRAEFIK_ENTRYPOINT}" \
                             --label "traefik.http.routers.nutrigenomics-api.tls.certresolver=${TRAEFIK_CERTRESOLVER}" \
                             --label "traefik.http.services.nutrigenomics-api.loadbalancer.server.port=5000" \
@@ -109,7 +109,7 @@ pipeline {
                         docker run -d \
                             --name ${FRONTEND_CONTAINER} \
                             --label traefik.enable=true \
-                            --label "traefik.http.routers.nutrigenomics-ui.rule=Host(\`${FRONTEND_DOMAIN}\`)" \
+                            --label "traefik.http.routers.nutrigenomics-ui.rule=Host(\\`${FRONTEND_DOMAIN}\\`)" \
                             --label "traefik.http.routers.nutrigenomics-ui.entrypoints=${TRAEFIK_ENTRYPOINT}" \
                             --label "traefik.http.routers.nutrigenomics-ui.tls.certresolver=${TRAEFIK_CERTRESOLVER}" \
                             --label "traefik.http.services.nutrigenomics-ui.loadbalancer.server.port=3000" \

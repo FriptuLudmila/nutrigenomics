@@ -85,16 +85,16 @@ pipeline {
                             --name ${BACKEND_CONTAINER} \
                             -e FLASK_ENV=production \
                             -e FLASK_DEBUG=False \
-                            -e SECRET_KEY=${SECRET_KEY} \
-                            -e MONGODB_URI="mongodb://${MONGO_USER}:${MONGO_PASSWORD}@${MONGO_CONTAINER}:27017/${MONGO_DB}?authSource=admin" \
-                            -e MONGODB_DB=${MONGO_DB} \
-                            -e ENCRYPTION_KEY=${ENCRYPTION_KEY} \
-                            -e GROQ_API_KEY=${GROQ_API_KEY} \
-                            -e SMTP_SERVER=${SMTP_SERVER} \
-                            -e SMTP_PORT=${SMTP_PORT} \
-                            -e SMTP_EMAIL=${SMTP_EMAIL} \
-                            -e SMTP_PASSWORD=${SMTP_PASSWORD} \
-                            -e FRONTEND_URL=https://${FRONTEND_DOMAIN} \
+                            -e "SECRET_KEY=${SECRET_KEY}" \
+                            -e "MONGODB_URI=mongodb://${MONGO_USER}:${MONGO_PASSWORD}@${MONGO_CONTAINER}:27017/${MONGO_DB}?authSource=admin" \
+                            -e "MONGODB_DB=${MONGO_DB}" \
+                            -e "ENCRYPTION_KEY=${ENCRYPTION_KEY}" \
+                            -e "GROQ_API_KEY=${GROQ_API_KEY}" \
+                            -e "SMTP_SERVER=${SMTP_SERVER}" \
+                            -e "SMTP_PORT=${SMTP_PORT}" \
+                            -e "SMTP_EMAIL=${SMTP_EMAIL}" \
+                            -e "SMTP_PASSWORD=${SMTP_PASSWORD}" \
+                            -e "FRONTEND_URL=https://${FRONTEND_DOMAIN}" \
                             -v nutrigenomics-uploads:/app/uploads \
                             --label traefik.enable=true \
                             --label "traefik.http.routers.nutrigenomics-api.rule=Host(\\`${API_DOMAIN}\\`)" \

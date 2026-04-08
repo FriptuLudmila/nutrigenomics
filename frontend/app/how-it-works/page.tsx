@@ -42,7 +42,7 @@ export default function HowItWorksPage() {
             How <span className="text-ng-lime">GenyO</span> Works
           </h1>
           <p className="text-lg text-[#A0B8A0] font-medium max-w-2xl mx-auto">
-            From uploading your raw genetic file to receiving a fully personalized nutrition plan — here's exactly what happens at every step.
+            From uploading your raw genetic file to receiving a fully personalized nutrition plan — here&apos;s exactly what happens at every step.
           </p>
         </div>
       </section>
@@ -79,7 +79,7 @@ export default function HowItWorksPage() {
               </div>
               <h2 className="text-4xl font-bold text-ng-text mb-6">Upload Your DNA File</h2>
               <p className="text-ng-text-2 font-medium mb-8">
-                GenyO works with raw DNA data files exported directly from consumer genetic testing services. Simply download your raw data file from your provider's website, then drag and drop it here.
+                GenyO works with raw DNA data files exported directly from consumer genetic testing services. Simply download your raw data file from your provider&apos;s website, then drag and drop it here.
               </p>
               <ul className="space-y-4">
                 {[
@@ -151,7 +151,7 @@ export default function HowItWorksPage() {
               </div>
               <h2 className="text-4xl font-bold text-ng-text mb-6">AI Genetic Analysis</h2>
               <p className="text-ng-text-2 font-medium mb-8">
-                After upload, GenyO's analysis engine parses your raw SNP file and cross-references it against a curated database of 25+ nutrigenomics variants. Risk levels are assigned per finding based on peer-reviewed literature.
+                After upload, GenyO&apos;s analysis engine parses your raw SNP file and cross-references it against a curated database of 25+ nutrigenomics variants. Risk levels are assigned per finding based on peer-reviewed literature.
               </p>
               <ul className="space-y-4">
                 {[

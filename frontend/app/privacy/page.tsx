@@ -255,7 +255,7 @@ export default function PrivacyPage() {
               title="Changes to This Policy"
             >
               <p className="text-ng-text-2 font-medium text-sm leading-relaxed">
-                We may update this Privacy Policy from time to time. When we do, we will update the "Last updated" date at the top of this page and, for material changes, notify you by email. Continued use of GenyO after changes take effect constitutes acceptance of the updated policy.
+                We may update this Privacy Policy from time to time. When we do, we will update the &quot;Last updated&quot; date at the top of this page and, for material changes, notify you by email. Continued use of GenyO after changes take effect constitutes acceptance of the updated policy.
               </p>
             </PolicySection>
 

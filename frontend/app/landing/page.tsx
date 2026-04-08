@@ -135,7 +135,7 @@ export default function LandingPage() {
                   Discover What Makes You Unique
                 </h2>
                 <p className="text-ng-text-2 mb-8 font-medium">
-                  Everyone's body processes nutrients differently. Your genetic variants influence how you
+                  Everyone&apos;s body processes nutrients differently. Your genetic variants influence how you
                   metabolize vitamins, respond to caffeine, digest dairy, and much more.
                 </p>
                 <ul className="space-y-4">

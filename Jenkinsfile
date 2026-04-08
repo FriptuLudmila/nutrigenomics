@@ -22,7 +22,7 @@ pipeline {
 
         SMTP_SERVER = "smtp.gmail.com"
         SMTP_PORT   = "587"
-        SMTP_EMAIL  = "your-email@gmail.com"
+        SMTP_EMAIL  = "frpludmila03@gmail.com"
 
         TRAEFIK_ENTRYPOINT   = "websecure"
         TRAEFIK_CERTRESOLVER = "myresolver"
@@ -33,8 +33,8 @@ pipeline {
         stage('Checkout') {
             steps {
                 git branch: 'main',
-                    url: 'git@github.com:your-org/nutrigenomics.git',
-                    credentialsId: 'nutrigenomics-ssh'
+                    url: 'git@github.com:FriptuLudmila/nutrigenomics.git',
+                    credentialsId: 'genyo-ssh'
             }
         }
 
@@ -94,6 +94,7 @@ pipeline {
                             -e SMTP_PORT=${SMTP_PORT} \
                             -e SMTP_EMAIL=${SMTP_EMAIL} \
                             -e SMTP_PASSWORD=${SMTP_PASSWORD} \
+                            -e FRONTEND_URL=https://${FRONTEND_DOMAIN} \
                             -v nutrigenomics-uploads:/app/uploads \
                             --label traefik.enable=true \
                             --label "traefik.http.routers.nutrigenomics-api.rule=Host(\`${API_DOMAIN}\`)" \

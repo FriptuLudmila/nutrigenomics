@@ -12,6 +12,7 @@ from .models import (
     save_genetic_results, get_genetic_results,
     save_questionnaire, get_questionnaire,
     save_recommendations, get_recommendations as get_recs_from_db,
+    delete_recommendations,
     delete_session_data
 )
 from .encryption import encrypt_genetic_findings, decrypt_genetic_findings
@@ -250,14 +251,18 @@ def submit_questionnaire():
         return jsonify({'error': 'Missing answers'}), 400
     
     questionnaire = Questionnaire.create(session_id=session_id, answers=data['answers'])
-    
+
     if not save_questionnaire(db, questionnaire):
         return jsonify({'error': 'Database error'}), 500
-    
+
+    # Invalidate any cached recommendations so they are regenerated with the new questionnaire data
+    delete_recommendations(db, session_id)
+    session.has_recommendations = False
+
     session.status = 'questionnaire_completed'
     session.has_questionnaire = True
     save_session(db, session)
-    
+
     return jsonify({
         'success': True,
         'session_id': session_id,
@@ -307,6 +312,9 @@ def get_recommendations(session_id):
     genetic_results = get_genetic_results(db, session_id)
     if not genetic_results:
         return jsonify({'error': 'Please call /api/analyze first'}), 400
+
+    if not session.has_questionnaire:
+        return jsonify({'error': 'Please complete the questionnaire first'}), 400
 
     cached = get_recs_from_db(db, session_id)
     if cached:

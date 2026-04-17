@@ -303,6 +303,16 @@ def get_recommendations(db, session_id: str) -> Optional[Recommendations]:
         return None
 
 
+def delete_recommendations(db, session_id: str) -> bool:
+    """Delete cached recommendations for a session (e.g. when questionnaire is updated)"""
+    try:
+        db.recommendations.delete_one({'session_id': session_id})
+        return True
+    except Exception as e:
+        print(f"[ERROR] Failed to delete recommendations: {e}")
+        return False
+
+
 def delete_session_data(db, session_id: str) -> bool:
     """Delete all data for a session (GDPR compliance)"""
     try:

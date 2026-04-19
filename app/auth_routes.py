@@ -11,7 +11,7 @@ import uuid
 from .database import get_db
 from .auth import (
     User, hash_password, verify_password, generate_token,
-    save_user, get_user_by_email,
+    validate_password, save_user, get_user_by_email,
     generate_verification_code, save_verification_code,
     get_verification_code, delete_verification_code,
     send_verification_email, require_auth,
@@ -69,8 +69,9 @@ def register():
     if '@' not in email or '.' not in email:
         return jsonify({'error': 'Invalid email address'}), 400
 
-    if len(password) < 6:
-        return jsonify({'error': 'Password must be at least 6 characters'}), 400
+    password_error = validate_password(password)
+    if password_error:
+        return jsonify({'error': password_error}), 400
 
     db = get_db()
 
@@ -468,8 +469,9 @@ def reset_password_confirm():
     token = data['token'].strip()
     new_password = data['new_password']
 
-    if len(new_password) < 6:
-        return jsonify({'error': 'Password must be at least 6 characters'}), 400
+    password_error = validate_password(new_password)
+    if password_error:
+        return jsonify({'error': password_error}), 400
 
     db = get_db()
 

@@ -33,6 +33,14 @@ export default function AuthModal({ isOpen, onClose }: AuthModalProps) {
 
   if (!isOpen) return null;
 
+  const validatePassword = (pw: string): string | null => {
+    if (pw.length < 10) return 'Password must be at least 10 characters';
+    if (!/[A-Z]/.test(pw)) return 'Password must contain at least one uppercase letter';
+    if (!/[0-9]/.test(pw)) return 'Password must contain at least one digit';
+    if (!/[!@#$%^&*()\-_=+[\]{}|;:'",.<>?/`~\\]/.test(pw)) return 'Password must contain at least one symbol';
+    return null;
+  };
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setLoading(true);
@@ -67,6 +75,12 @@ export default function AuthModal({ isOpen, onClose }: AuthModalProps) {
 
         router.push('/app');
       } else if (mode === 'signup') {
+        const pwError = validatePassword(formData.password);
+        if (pwError) {
+          setError(pwError);
+          setLoading(false);
+          return;
+        }
         const response = await fetch(`${API_BASE_URL}/api/auth/register`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
@@ -284,7 +298,7 @@ export default function AuthModal({ isOpen, onClose }: AuthModalProps) {
                       type={showPassword ? 'text' : 'password'}
                       id="password" name="password"
                       value={formData.password} onChange={handleChange}
-                      required minLength={6}
+                      required minLength={10}
                       className="input-field pr-10" placeholder="••••••••"
                     />
                     <button
@@ -295,6 +309,11 @@ export default function AuthModal({ isOpen, onClose }: AuthModalProps) {
                       {showPassword ? <EyeOff className="w-5 h-5" /> : <Eye className="w-5 h-5" />}
                     </button>
                   </div>
+                  {mode === 'signup' && (
+                    <p className="mt-1.5 text-xs text-ng-muted">
+                      Min. 10 characters, one uppercase, one digit, one symbol
+                    </p>
+                  )}
                 </div>
               </>
             )}

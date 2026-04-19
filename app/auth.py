@@ -80,6 +80,23 @@ class VerificationCode:
         return datetime.utcnow() > self.expires_at
 
 
+def validate_password(password: str) -> Optional[str]:
+    """
+    Validate password complexity.
+    Returns an error message string if invalid, or None if valid.
+    Requirements: min 10 chars, 1 uppercase, 1 digit, 1 symbol.
+    """
+    if len(password) < 10:
+        return 'Password must be at least 10 characters'
+    if not any(c.isupper() for c in password):
+        return 'Password must contain at least one uppercase letter'
+    if not any(c.isdigit() for c in password):
+        return 'Password must contain at least one digit'
+    if not any(c in '!@#$%^&*()_+-=[]{}|;:\'",.<>?/`~\\' for c in password):
+        return 'Password must contain at least one symbol'
+    return None
+
+
 def hash_password(password: str) -> str:
     """Hash a password using bcrypt"""
     return bcrypt.hashpw(password.encode('utf-8'), bcrypt.gensalt()).decode('utf-8')

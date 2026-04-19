@@ -571,6 +571,31 @@ def generate_personalized_recommendations(findings, questionnaire):
             recommendations['foods_to_limit'].append('Butter, coconut oil, high-fat dairy')
             recommendations['foods_to_increase'].append('Olive oil, avocado, nuts')
         
+        # APOE Fat Metabolism
+        elif rsid == 'rs7412' and risk in ['moderate']:
+            rec = {'category': 'Fat Metabolism (APOE)', 'genetic_basis': f'{condition} - {genotype}', 'recommendation': base_rec}
+            if genotype == 'TT':
+                # APOE e2/e2 — protective for LDL cholesterol but triglycerides rise on high-carb diets
+                if diet_type in ['keto', 'paleo']:
+                    rec['personalized_note'] = (
+                        'Your APOE e2/e2 genotype is protective for cholesterol, '
+                        'but your current diet is low-carb which suits your profile well.'
+                    )
+                else:
+                    rec['personalized_note'] = (
+                        'APOE e2/e2 can raise triglycerides on high-carb diets. '
+                        'Limit refined carbs and sugary foods.'
+                    )
+                    recommendations['foods_to_limit'].append('Refined carbohydrates, added sugars')
+            elif genotype == 'CT':
+                # APOE e2 carrier — favorable cholesterol but may need fat-soluble vitamins
+                rec['personalized_note'] = (
+                    'As an APOE e2 carrier your LDL cholesterol tends to be lower, '
+                    'but ensure adequate fat-soluble vitamin intake (A, D, E, K).'
+                )
+                recommendations['supplements_to_consider'].append('Fat-soluble vitamins (A, D, E, K) — check levels')
+            recommendations['moderate_priority'].append(rec)
+
         # Carb/Diabetes Risk
         elif rsid == 'rs7903146' and risk in ['high', 'moderate']:
             rec = {'category': 'Carb Metabolism', 'genetic_basis': f'{condition} - {genotype}', 'recommendation': base_rec}

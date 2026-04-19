@@ -24,12 +24,21 @@ function ResetPasswordForm() {
     }
   }, [token]);
 
+  const validatePassword = (pw: string): string | null => {
+    if (pw.length < 10) return 'Password must be at least 10 characters.';
+    if (!/[A-Z]/.test(pw)) return 'Password must contain at least one uppercase letter.';
+    if (!/[0-9]/.test(pw)) return 'Password must contain at least one digit.';
+    if (!/[!@#$%^&*()\-_=+[\]{}|;:'",.<>?/`~\\]/.test(pw)) return 'Password must contain at least one symbol.';
+    return null;
+  };
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError('');
 
-    if (password.length < 6) {
-      setError('Password must be at least 6 characters.');
+    const pwError = validatePassword(password);
+    if (pwError) {
+      setError(pwError);
       return;
     }
     if (password !== confirmPassword) {
@@ -99,7 +108,7 @@ function ResetPasswordForm() {
                     value={password}
                     onChange={(e) => setPassword(e.target.value)}
                     required
-                    minLength={6}
+                    minLength={10}
                     className="input-field pr-10"
                     placeholder="••••••••"
                     disabled={!token}
@@ -113,6 +122,10 @@ function ResetPasswordForm() {
                   </button>
                 </div>
               </div>
+
+              <p className="text-xs text-ng-muted -mt-2">
+                Min. 10 characters, one uppercase, one digit, one symbol
+              </p>
 
               <div>
                 <label className="block text-sm font-semibold text-ng-text-2 mb-1.5">Confirm Password</label>

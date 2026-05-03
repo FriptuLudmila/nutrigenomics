@@ -14,7 +14,7 @@ import io
 from snps import SNPs
 import pandas as pd
 from dataclasses import dataclass
-from typing import Optional, Dict, List, Union
+from typing import Optional, Dict, List
 from enum import Enum
 
 
@@ -749,44 +749,21 @@ NUTRIGENOMICS_SNPS = {
 
 class GeneticParser:
     """
-    Parses genetic data files and analyzes nutrigenomics variants.
-    
-    Supports 23andMe, AncestryDNA, and other common formats via the `snps` library.
-    
-    Usage:
-        parser = GeneticParser("genome_file.txt")
-        findings = parser.analyze_all()
-        print(parser.generate_report())
-    """
-    
-    def __init__(self, source: Union[str, bytes]):
-        """
-        Initialize the parser with a genetic data file path or raw bytes.
+    Parses genetic data and analyzes nutrigenomics variants.
 
-        Args:
-            source: Path to genetic data file, or raw file bytes (kept in memory only)
-        """
+    Supports 23andMe, AncestryDNA, and other common formats via the `snps` library.
+    """
+
+    def __init__(self, raw_bytes: bytes):
         self.snps_data = None
         self.findings = []
-        self._load(source)
+        self._load(raw_bytes)
 
-    def _load(self, source: Union[str, bytes]):
-        """Load and validate the genetic data"""
-        if isinstance(source, bytes):
-            print("[MEMORY] Parsing genetic data from in-memory buffer")
-            self.snps_data = SNPs(io.BytesIO(source))
-        else:
-            print(f"Loading genetic data from: {source}")
-            self.snps_data = SNPs(source)
-        
+    def _load(self, raw_bytes: bytes):
+        self.snps_data = SNPs(io.BytesIO(raw_bytes))
+
         if self.snps_data.snps is None or len(self.snps_data.snps) == 0:
             raise ValueError("No SNP data found in file. Is this a valid genetic data file?")
-        
-        print(f"[OK] File loaded successfully!")
-        print(f"  Source: {self.source}")
-        print(f"  Total SNPs: {self.snp_count:,}")
-        print(f"  Reference Build: GRCh{self.build}")
-        print("-" * 50)
     
     @property
     def source(self) -> str:
@@ -1044,9 +1021,11 @@ if __name__ == "__main__":
         sys.exit(1)
     
     filepath = sys.argv[1]
-    
+
     try:
-        parser = GeneticParser(filepath)
+        with open(filepath, 'rb') as f:
+            raw_bytes = f.read()
+        parser = GeneticParser(raw_bytes)
         parser.analyze_all()
         print(parser.generate_report())
         

@@ -53,7 +53,7 @@ export default function PrivacyPage() {
           <div className="flex flex-wrap justify-center gap-4">
             {[
               { icon: <Lock className="w-4 h-4 text-ng-lime" />, text: 'End-to-end encrypted' },
-              { icon: <Trash2 className="w-4 h-4 text-ng-lime" />, text: 'DNA files deleted after analysis' },
+              { icon: <Trash2 className="w-4 h-4 text-ng-lime" />, text: 'DNA files never stored on disk' },
               { icon: <Eye className="w-4 h-4 text-ng-lime" />, text: 'Never sold to third parties' },
               { icon: <UserCheck className="w-4 h-4 text-ng-lime" />, text: 'GDPR compliant' },
               { icon: <Trash2 className="w-4 h-4 text-ng-lime" />, text: 'Delete your account anytime' },
@@ -81,7 +81,7 @@ export default function PrivacyPage() {
               <ul className="space-y-3 mt-4">
                 {[
                   { label: 'Account data', detail: 'Your name, email address, age, and sex — provided during registration.' },
-                  { label: 'Genetic data', detail: 'The raw DNA file you upload (from 23andMe, AncestryDNA, or similar providers). This file is processed immediately and then permanently deleted from disk.' },
+                  { label: 'Genetic data', detail: 'The raw DNA file you upload (from 23andMe, AncestryDNA, or similar providers). This file is processed entirely in memory and never written to disk or stored in our database — only the derived findings are kept.' },
                   { label: 'Derived genetic findings', detail: 'Structured results extracted from your genetic file (e.g., specific SNP variants and associated risk levels). These are encrypted and stored in our database to power your report.' },
                   { label: 'Lifestyle questionnaire answers', detail: 'Optional responses you provide about diet, exercise, and health goals, used to personalise your nutrition plan.' },
                   { label: 'Usage data', detail: 'Basic server logs (IP address, request timestamps) retained for up to 30 days for security purposes only.' },
@@ -104,7 +104,7 @@ export default function PrivacyPage() {
                 {[
                   { title: 'Fernet Encryption at Rest', desc: 'All genetic findings stored in our database are encrypted using symmetric Fernet encryption. The encryption key is never stored alongside the data.' },
                   { title: 'TLS in Transit', desc: 'All communication between your browser and our servers is encrypted via HTTPS/TLS. Your raw DNA file never travels over an unencrypted connection.' },
-                  { title: 'Immediate File Deletion', desc: 'Raw genome files are deleted from disk immediately after analysis completes. We do not archive or back up the original file — only the derived findings.' },
+                  { title: 'In-Memory Processing', desc: 'Raw genome files are parsed entirely in server memory and never written to disk or stored in our database. Only the encrypted derived findings are persisted.' },
                   { title: 'No Plain-Text Storage', desc: 'Passwords are hashed with bcrypt before storage. No plain-text credentials are ever written to disk or logs.' },
                 ].map(({ title, desc }) => (
                   <div key={title} className="bg-ng-light rounded-xl p-5 border border-ng-border">
@@ -196,7 +196,7 @@ export default function PrivacyPage() {
                   </thead>
                   <tbody className="divide-y divide-ng-border">
                     {[
-                      ['Raw DNA file', 'Deleted immediately after analysis'],
+                      ['Raw DNA file', 'Never stored — processed in memory only'],
                       ['Derived genetic findings', 'Until you delete your account'],
                       ['Account profile (name, email, age, sex)', 'Until you delete your account'],
                       ['Analysis reports', 'Until you delete the report or your account'],
@@ -303,7 +303,7 @@ export default function PrivacyPage() {
           <p className="text-xs text-[#A0A0A0] font-medium text-center">
             Medical Disclaimer: This analysis is for educational purposes only. Always consult healthcare professionals before making dietary changes.
           </p>
-          <p className="text-xs text-[#A0A0A0] font-medium">© 2024 GenyO. All rights reserved.</p>
+          <p className="text-xs text-[#A0A0A0] font-medium">© 2026 GenyO. All rights reserved.</p>
         </div>
       </footer>
     </div>

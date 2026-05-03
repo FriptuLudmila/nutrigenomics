@@ -12,7 +12,7 @@ from datetime import datetime, timedelta
 from typing import Optional, Dict
 from dataclasses import dataclass, asdict
 from functools import wraps
-from flask import request, jsonify
+from flask import request, jsonify, make_response, current_app
 import smtplib
 from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
@@ -133,17 +133,38 @@ def decode_token(token: str) -> Optional[Dict]:
 verify_token = decode_token
 
 
+def set_auth_cookie(response, token, remember=False):
+    max_age = JWT_EXPIRATION_HOURS * 3600 if remember else None
+    response.set_cookie(
+        'auth_token',
+        value=token,
+        httponly=True,
+        samesite='Lax',
+        secure=not current_app.config['DEBUG'],
+        max_age=max_age,
+        path='/',
+    )
+    return response
+
+
+def clear_auth_cookie(response):
+    response.set_cookie(
+        'auth_token',
+        value='',
+        httponly=True,
+        samesite='Lax',
+        secure=not current_app.config['DEBUG'],
+        max_age=0,
+        path='/',
+    )
+    return response
+
+
 def require_auth(f):
     """Decorator to protect routes with JWT authentication"""
     @wraps(f)
     def decorated_function(*args, **kwargs):
-        token = None
-
-        # Get token from Authorization header
-        if 'Authorization' in request.headers:
-            auth_header = request.headers['Authorization']
-            if auth_header.startswith('Bearer '):
-                token = auth_header.split(' ')[1]
+        token = request.cookies.get('auth_token')
 
         if not token:
             return jsonify({'error': 'Authentication required'}), 401
@@ -152,7 +173,6 @@ def require_auth(f):
         if not payload:
             return jsonify({'error': 'Invalid or expired token'}), 401
 
-        # Add user info to request context
         request.user_id = payload['user_id']
         request.user_email = payload['email']
 

@@ -11,8 +11,7 @@ export default function LandingPage() {
   const [isLoggedIn, setIsLoggedIn] = useState(false);
 
   useEffect(() => {
-    const token = localStorage.getItem('auth_token') || sessionStorage.getItem('auth_token');
-    setIsLoggedIn(!!token);
+    setIsLoggedIn(localStorage.getItem('logged_in') === 'true');
   }, []);
 
   return (

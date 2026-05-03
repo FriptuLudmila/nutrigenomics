@@ -40,8 +40,7 @@ export default function ProfilePage() {
   const [editForm, setEditForm] = useState({ name: '', age: '', sex: 'other' });
 
   useEffect(() => {
-    const token = localStorage.getItem('auth_token') || sessionStorage.getItem('auth_token');
-    if (!token) {
+    if (localStorage.getItem('logged_in') !== 'true') {
       router.replace('/landing');
       return;
     }
@@ -122,9 +121,10 @@ export default function ProfilePage() {
     router.push('/app');
   };
 
-  const handleLogout = () => {
-    localStorage.clear();
-    sessionStorage.clear();
+  const handleLogout = async () => {
+    try { await nutrigenomicsAPI.logout(); } catch { /* best-effort */ }
+    localStorage.removeItem('logged_in');
+    sessionStorage.removeItem('genyo_session');
     router.push('/landing');
   };
 

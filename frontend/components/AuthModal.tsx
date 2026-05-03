@@ -52,6 +52,7 @@ export default function AuthModal({ isOpen, onClose }: AuthModalProps) {
         const response = await fetch(`${API_BASE_URL}/api/auth/reset-password-request`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
+          credentials: 'include',
           body: JSON.stringify({ email: formData.email }),
         });
         const data = await response.json();
@@ -62,17 +63,14 @@ export default function AuthModal({ isOpen, onClose }: AuthModalProps) {
         const response = await fetch(`${API_BASE_URL}/api/auth/login`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ email: formData.email, password: formData.password }),
+          credentials: 'include',
+          body: JSON.stringify({ email: formData.email, password: formData.password, remember_me: rememberMe }),
         });
 
         const data = await response.json();
         if (!response.ok) throw new Error(data.error || 'Sign in failed');
 
-        const storage = rememberMe ? localStorage : sessionStorage;
-        storage.setItem('auth_token', data.token);
-        storage.setItem('user_email', data.user.email);
-        storage.setItem('user_name', data.user.name);
-
+        localStorage.setItem('logged_in', 'true');
         router.push('/app');
       } else if (mode === 'signup') {
         const pwError = validatePassword(formData.password);
@@ -84,6 +82,7 @@ export default function AuthModal({ isOpen, onClose }: AuthModalProps) {
         const response = await fetch(`${API_BASE_URL}/api/auth/register`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
+          credentials: 'include',
           body: JSON.stringify({
             name: formData.name,
             age: parseInt(formData.age),
@@ -102,17 +101,14 @@ export default function AuthModal({ isOpen, onClose }: AuthModalProps) {
         const response = await fetch(`${API_BASE_URL}/api/auth/verify`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
+          credentials: 'include',
           body: JSON.stringify({ email: formData.email, code: formData.verificationCode }),
         });
 
         const data = await response.json();
         if (!response.ok) throw new Error(data.error || 'Verification failed');
 
-        const storage = rememberMe ? localStorage : sessionStorage;
-        storage.setItem('auth_token', data.token);
-        storage.setItem('user_email', data.user.email);
-        storage.setItem('user_name', data.user.name);
-
+        localStorage.setItem('logged_in', 'true');
         router.push('/app');
       }
     } catch (err: unknown) {
@@ -132,6 +128,7 @@ export default function AuthModal({ isOpen, onClose }: AuthModalProps) {
       const response = await fetch(`${API_BASE_URL}/api/auth/resend-code`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
         body: JSON.stringify({ email: formData.email }),
       });
 

@@ -193,24 +193,14 @@ const api = axios.create({
   headers: {
     'Content-Type': 'application/json',
   },
-});
-
-api.interceptors.request.use((config) => {
-  if (typeof window !== 'undefined') {
-    const token = localStorage.getItem('auth_token') || sessionStorage.getItem('auth_token');
-    if (token) {
-      config.headers['Authorization'] = `Bearer ${token}`;
-    }
-  }
-  return config;
+  withCredentials: true,
 });
 
 api.interceptors.response.use(
   (response) => response,
   (error) => {
     if (error.response?.status === 401 && typeof window !== 'undefined') {
-      localStorage.removeItem('auth_token');
-      sessionStorage.removeItem('auth_token');
+      localStorage.removeItem('logged_in');
       sessionStorage.removeItem('genyo_session');
       window.location.replace('/landing');
     }
@@ -278,5 +268,9 @@ export const nutrigenomicsAPI = {
   deleteReport: async (sessionId: string): Promise<{ success: boolean; message: string }> => {
     const response = await api.delete(`/api/session/${sessionId}`);
     return response.data;
+  },
+
+  logout: async (): Promise<void> => {
+    await api.post('/api/auth/logout');
   },
 };

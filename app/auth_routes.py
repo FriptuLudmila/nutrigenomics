@@ -4,7 +4,7 @@ Authentication Routes
 API endpoints for user registration, email verification, and login.
 """
 
-from flask import Blueprint, request, jsonify
+from flask import Blueprint, request, jsonify, make_response
 from datetime import datetime
 import uuid
 
@@ -15,6 +15,7 @@ from .auth import (
     generate_verification_code, save_verification_code,
     get_verification_code, delete_verification_code,
     send_verification_email, require_auth,
+    set_auth_cookie, clear_auth_cookie,
     generate_reset_token, save_reset_token, get_reset_token,
     delete_reset_token, send_reset_password_email
 )
@@ -162,18 +163,18 @@ def verify_email():
     if not save_user(db, user):
         return jsonify({'error': 'Failed to verify email'}), 500
 
-    # Delete verification code
     delete_verification_code(db, email)
 
-    # Generate JWT token
     token = generate_token(user.user_id, user.email)
+    remember = data.get('remember_me', False)
 
-    return jsonify({
+    response = make_response(jsonify({
         'success': True,
         'message': 'Email verified successfully',
-        'token': token,
         'user': user.to_safe_dict()
-    }), 200
+    }), 200)
+    set_auth_cookie(response, token, remember=remember)
+    return response
 
 
 # ============================================
@@ -268,19 +269,29 @@ def login():
 
     print(f"[DEBUG] Login successful for {email}")
 
-    # Update last login
     user.last_login = datetime.utcnow()
     save_user(db, user)
 
-    # Generate JWT token
     token = generate_token(user.user_id, user.email)
+    remember = data.get('remember_me', False)
 
-    return jsonify({
+    response = make_response(jsonify({
         'success': True,
         'message': 'Login successful',
-        'token': token,
         'user': user.to_safe_dict()
-    }), 200
+    }), 200)
+    set_auth_cookie(response, token, remember=remember)
+    return response
+
+
+# ============================================
+# ENDPOINT: Logout
+# ============================================
+@auth_bp.route('/logout', methods=['POST'])
+def logout():
+    response = make_response(jsonify({'success': True, 'message': 'Logged out'}), 200)
+    clear_auth_cookie(response)
+    return response
 
 
 # ============================================
@@ -289,10 +300,7 @@ def login():
 @auth_bp.route('/me', methods=['GET'])
 @require_auth
 def get_current_user():
-    """
-    Get current user info (protected route)
-    Requires JWT token in Authorization header
-    """
+    """Get current user info (protected route)"""
     db = get_db()
     user = get_user_by_email(db, request.user_email)
 

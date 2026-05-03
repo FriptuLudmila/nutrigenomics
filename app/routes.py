@@ -14,8 +14,7 @@ from .models import (
     delete_session_data
 )
 from .encryption import encrypt_genetic_findings, decrypt_genetic_findings
-from .file_encryption import cleanup_session_files
-from .ai_meal_planner import generate_meal_plan, get_fallback_meal_plan
+from .ai_meal_planner import generate_meal_plan
 from .auth import require_auth
 from .limiter import limiter
 
@@ -746,13 +745,6 @@ def delete_session(session_id):
         return jsonify({'error': 'Session not found'}), 404
     if session.user_id != request.user_id:
         return jsonify({'error': 'Forbidden'}), 403
-
-    # Clean up legacy on-disk files if they exist from older sessions
-    if session.filepath:
-        try:
-            cleanup_session_files(session.filepath, secure=True)
-        except Exception as e:
-            print(f"[WARNING] File cleanup failed: {e}")
 
     # Delete database records
     if delete_session_data(db, session_id):

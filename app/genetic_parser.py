@@ -9,8 +9,6 @@ Date: December 2024
 Updated: December 2024 - Expanded to 25 SNPs
 """
 
-import io
-
 from snps import SNPs
 import pandas as pd
 from dataclasses import dataclass
@@ -760,7 +758,7 @@ class GeneticParser:
         self._load(raw_bytes)
 
     def _load(self, raw_bytes: bytes):
-        self.snps_data = SNPs(io.BytesIO(raw_bytes))
+        self.snps_data = SNPs(raw_bytes)
 
         if self.snps_data.snps is None or len(self.snps_data.snps) == 0:
             raise ValueError("No SNP data found in file. Is this a valid genetic data file?")

@@ -20,7 +20,7 @@ from email.mime.multipart import MIMEMultipart
 # JWT Configuration
 SECRET_KEY = os.getenv('SECRET_KEY', 'your-secret-key-change-this-in-production')
 JWT_ALGORITHM = 'HS256'
-JWT_EXPIRATION_HOURS = 24 * 7  # 7 days
+JWT_EXPIRATION_HOURS = 24  # 1 day
 
 
 @dataclass

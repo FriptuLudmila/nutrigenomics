@@ -9,10 +9,12 @@ Date: December 2024
 Updated: December 2024 - Expanded to 25 SNPs
 """
 
+import io
+
 from snps import SNPs
 import pandas as pd
 from dataclasses import dataclass
-from typing import Optional, Dict, List
+from typing import Optional, Dict, List, Union
 from enum import Enum
 
 
@@ -757,24 +759,25 @@ class GeneticParser:
         print(parser.generate_report())
     """
     
-    def __init__(self, filepath: str):
+    def __init__(self, source: Union[str, bytes]):
         """
-        Initialize the parser with a genetic data file.
-        
+        Initialize the parser with a genetic data file path or raw bytes.
+
         Args:
-            filepath: Path to 23andMe, AncestryDNA, or similar file
+            source: Path to genetic data file, or raw file bytes (kept in memory only)
         """
-        self.filepath = filepath
         self.snps_data = None
         self.findings = []
-        self._load_file()
-    
-    def _load_file(self):
-        """Load and validate the genetic data file"""
-        print(f"Loading genetic data from: {self.filepath}")
-        print("-" * 50)
-        
-        self.snps_data = SNPs(self.filepath)
+        self._load(source)
+
+    def _load(self, source: Union[str, bytes]):
+        """Load and validate the genetic data"""
+        if isinstance(source, bytes):
+            print("[MEMORY] Parsing genetic data from in-memory buffer")
+            self.snps_data = SNPs(io.BytesIO(source))
+        else:
+            print(f"Loading genetic data from: {source}")
+            self.snps_data = SNPs(source)
         
         if self.snps_data.snps is None or len(self.snps_data.snps) == 0:
             raise ValueError("No SNP data found in file. Is this a valid genetic data file?")

@@ -31,6 +31,22 @@ export interface FileUploadResponse {
     original_name: string;
     size_bytes: number;
   };
+  results: {
+    file_info: {
+      source: string;
+      snp_count: number;
+      build: number;
+    };
+    findings: GeneticFinding[];
+    summary: {
+      total_snps_in_file: number;
+      nutrigenomics_snps_analyzed: number;
+      high_risk: number;
+      moderate_risk: number;
+      low_risk: number;
+      protective: number;
+    };
+  };
   next_step: string;
 }
 

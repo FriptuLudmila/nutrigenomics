@@ -1,5 +1,3 @@
-import os
-import tempfile
 from datetime import datetime
 from flask import Blueprint, request, jsonify, current_app
 from werkzeug.utils import secure_filename
@@ -16,7 +14,7 @@ from .models import (
     delete_session_data
 )
 from .encryption import encrypt_genetic_findings, decrypt_genetic_findings
-from .file_encryption import encrypt_and_replace, decrypt_to_memory, cleanup_session_files, secure_delete_file
+from .file_encryption import cleanup_session_files
 from .ai_meal_planner import generate_meal_plan, get_fallback_meal_plan
 from .auth import require_auth
 from .limiter import limiter
@@ -73,7 +71,7 @@ def allowed_file(filename):
 
 
 # ============================================
-# ENDPOINT: Upload Genetic File
+# ENDPOINT: Upload & Analyze Genetic File
 # ============================================
 @api_bp.route('/upload', methods=['POST'])
 @limiter.limit("20 per hour")
@@ -98,34 +96,51 @@ def upload_file():
 
     try:
         filename = secure_filename(file.filename)
+        raw_bytes = file.read()
+        original_size = len(raw_bytes)
+
+        parser = GeneticParser(raw_bytes)
+        results = parser.export_to_dict()
+        del raw_bytes
+
+        findings = results['findings']
+        summary = {
+            'total_snps_in_file': parser.snp_count,
+            'nutrigenomics_snps_analyzed': len(findings),
+            'high_risk': len([f for f in findings if f['risk_level'] == 'high']),
+            'moderate_risk': len([f for f in findings if f['risk_level'] == 'moderate']),
+            'low_risk': len([f for f in findings if f['risk_level'] == 'low']),
+            'protective': len([f for f in findings if f['risk_level'] == 'protective'])
+        }
+
+        encrypted_findings = encrypt_genetic_findings(findings)
+
         session = Session.create_new(filepath='', filename=filename, user_id=user_id)
-        unique_filename = f"{session.session_id}_{filename}"
-        filepath = os.path.join(current_app.config['UPLOAD_FOLDER'], unique_filename)
-
-        file.save(filepath)
-        original_size = os.path.getsize(filepath)
-
-        # Encrypt the file immediately after upload
-        try:
-            encrypted_path = encrypt_and_replace(filepath, keep_original=False)
-            session.filepath = encrypted_path
-            session.file_size_bytes = original_size  # Store original size for user reference
-            print(f"[SECURITY] File encrypted: {encrypted_path}")
-        except Exception as e:
-            print(f"[ERROR] File encryption failed: {e}")
-            secure_delete_file(filepath)
-            return jsonify({'error': 'File encryption failed'}), 500
+        session.file_size_bytes = original_size
+        session.status = 'analyzed'
+        session.has_genetic_results = True
 
         db = get_db()
         if not save_session(db, session):
             return jsonify({'error': 'Database error'}), 500
 
+        genetic_results = GeneticResults.create(
+            session_id=session.session_id,
+            file_info=results['file_info'],
+            encrypted_findings=encrypted_findings,
+            summary=summary
+        )
+
+        if not save_genetic_results(db, genetic_results):
+            return jsonify({'error': 'Database error'}), 500
+
         return jsonify({
             'success': True,
             'session_id': session.session_id,
-            'message': 'File uploaded and encrypted successfully',
-            'file_info': {'original_name': filename, 'size_bytes': session.file_size_bytes},
-            'next_step': 'POST /api/analyze with session_id'
+            'message': 'File uploaded and analyzed successfully',
+            'file_info': {'original_name': filename, 'size_bytes': original_size},
+            'results': {'file_info': results['file_info'], 'findings': findings, 'summary': summary},
+            'next_step': 'POST /api/questionnaire'
         }), 201
 
     except Exception as e:
@@ -133,7 +148,7 @@ def upload_file():
 
 
 # ============================================
-# ENDPOINT: Analyze Genetic Data
+# ENDPOINT: Retrieve Cached Analysis Results
 # ============================================
 @api_bp.route('/analyze', methods=['POST'])
 @limiter.limit("20 per hour")
@@ -164,68 +179,8 @@ def analyze_genetic_data():
                 'summary': existing_results.summary
             }
         }), 200
-    
-    tmp_path = None
-    try:
-        if session.filepath.endswith('.encrypted'):
-            raw_bytes = decrypt_to_memory(session.filepath)
-            upload_dir = current_app.config['UPLOAD_FOLDER']
-            fd, tmp_path = tempfile.mkstemp(dir=upload_dir, suffix='.tmp')
-            try:
-                with os.fdopen(fd, 'wb') as f:
-                    f.write(raw_bytes)
-            except Exception:
-                os.close(fd)
-                raise
-            finally:
-                del raw_bytes
-            analysis_path = tmp_path
-        else:
-            analysis_path = session.filepath
 
-        parser = GeneticParser(analysis_path)
-        results = parser.export_to_dict()
-
-        findings = results['findings']
-        summary = {
-            'total_snps_in_file': parser.snp_count,
-            'nutrigenomics_snps_analyzed': len(findings),
-            'high_risk': len([f for f in findings if f['risk_level'] == 'high']),
-            'moderate_risk': len([f for f in findings if f['risk_level'] == 'moderate']),
-            'low_risk': len([f for f in findings if f['risk_level'] == 'low']),
-            'protective': len([f for f in findings if f['risk_level'] == 'protective'])
-        }
-
-        encrypted_findings = encrypt_genetic_findings(findings)
-
-        genetic_results = GeneticResults.create(
-            session_id=session_id,
-            file_info=results['file_info'],
-            encrypted_findings=encrypted_findings,
-            summary=summary
-        )
-
-        if not save_genetic_results(db, genetic_results):
-            return jsonify({'error': 'Database error'}), 500
-
-        session.status = 'analyzed'
-        session.has_genetic_results = True
-        save_session(db, session)
-
-        cleanup_session_files(session.filepath, secure=True)
-
-        return jsonify({
-            'success': True,
-            'session_id': session_id,
-            'results': {'file_info': results['file_info'], 'findings': findings, 'summary': summary},
-            'next_step': 'POST /api/questionnaire'
-        }), 200
-
-    except Exception as e:
-        return jsonify({'error': 'Analysis failed', 'message': str(e)}), 500
-    finally:
-        if tmp_path:
-            secure_delete_file(tmp_path)
+    return jsonify({'error': 'No analysis results found. Please re-upload your file.'}), 404
 
 
 # ============================================
@@ -792,11 +747,12 @@ def delete_session(session_id):
     if session.user_id != request.user_id:
         return jsonify({'error': 'Forbidden'}), 403
 
-    # Securely delete all files associated with this session
-    try:
-        cleanup_session_files(session.filepath, secure=True)
-    except Exception as e:
-        print(f"[WARNING] File cleanup failed: {e}")
+    # Clean up legacy on-disk files if they exist from older sessions
+    if session.filepath:
+        try:
+            cleanup_session_files(session.filepath, secure=True)
+        except Exception as e:
+            print(f"[WARNING] File cleanup failed: {e}")
 
     # Delete database records
     if delete_session_data(db, session_id):

@@ -83,18 +83,16 @@ export default function Home() {
       setLoading(true);
       setError('');
       setFileName(file.name);
+      setStep('analyzing');
 
       const uploadResponse = await nutrigenomicsAPI.uploadFile(file);
       setSessionId(uploadResponse.session_id);
-      setStep('analyzing');
-      persistSession(uploadResponse.session_id, 'analyzing', file.name);
-
-      await nutrigenomicsAPI.analyzeGenetics(uploadResponse.session_id);
       setStep('questionnaire');
       persistSession(uploadResponse.session_id, 'questionnaire', file.name);
     } catch (err) {
       const error = err as { response?: { data?: { error?: string; message?: string } } };
       setError(error.response?.data?.error || error.response?.data?.message || 'Upload failed. Please try again.');
+      setStep('upload');
       console.error('Upload error:', err);
     } finally {
       setLoading(false);
